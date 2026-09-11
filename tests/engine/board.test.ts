@@ -13,6 +13,10 @@ describe('isOnBoard', () => {
   it('accepts a square within the board', () => {
     expect(isOnBoard({ row: 6, col: 7 })).toBe(true);
   });
+  it('accepts both corner squares', () => {
+    expect(isOnBoard({ row: 0, col: 0 })).toBe(true);
+    expect(isOnBoard({ row: 7, col: 7 })).toBe(true);
+  });
   it('rejects a square outside the board', () => {
     expect(isOnBoard({ row: 5, col: 8 })).toBe(false);
   });
