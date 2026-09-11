@@ -1,19 +1,3 @@
-// Example: tests for a tactics game's starting match.
-// import { describe, expect, it } from 'vitest';
-// import { createStartingMatch } from '../../src/engine/game';
-// import { getUnitAt } from '../../src/engine/pieces';
-//
-// describe('createStartingMatch', () => {
-//   it('places the first unit at its starting position', () => {
-//     const match = createStartingMatch();
-//
-//     expect(getUnitAt(match.units, { row: 1, column: 2 }, 8)).toEqual({
-//       team: 'sun',
-//       kind: 'scout',
-//     });
-//   });
-// });
-
 import { describe, expect, it } from 'vitest';
 import { getPieceAt } from '../../src/engine/pieces';
 import { createInitialGame } from '../../src/engine/game';
