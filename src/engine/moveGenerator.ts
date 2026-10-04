@@ -112,3 +112,52 @@ export function getRookMoves(game: GameState, from: Square): Square[] {
 
   return moves;
 }
+
+export function getQueenMoves(game: GameState, from: Square): Square[] {
+  const piece = getPieceAt(game.board, from, 8);
+  if (piece?.type !== 'queen') {
+    return [];
+  }
+
+  const moves: Square[] = [];
+
+  for (const direction of STRAIGHT_DIRECTIONS) {
+    let current: Square = { row: from.row + direction.row, col: from.col + direction.col };
+
+    while (isOnBoard(current)) {
+      const occupant = getPieceAt(game.board, current, 8);
+
+      if (!occupant) {
+        moves.push(current);
+      } else {
+        if (occupant.color !== piece.color) {
+          moves.push(current);
+        }
+        break;
+      }
+
+      current = { row: current.row + direction.row, col: current.col + direction.col };
+    }
+  }
+
+  for (const direction of DIAGONAL_DIRECTIONS) {
+    let current: Square = { row: from.row + direction.row, col: from.col + direction.col };
+
+    while (isOnBoard(current)) {
+      const occupant = getPieceAt(game.board, current, 8);
+
+      if (!occupant) {
+        moves.push(current);
+      } else {
+        if (occupant.color !== piece.color) {
+          moves.push(current);
+        }
+        break;
+      }
+
+      current = { row: current.row + direction.row, col: current.col + direction.col };
+    }
+  }
+
+  return moves;
+}
