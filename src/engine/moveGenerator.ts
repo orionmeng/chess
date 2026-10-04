@@ -161,3 +161,42 @@ export function getQueenMoves(game: GameState, from: Square): Square[] {
 
   return moves;
 }
+
+export function getKingMoves(game: GameState, from: Square): Square[] {
+  const piece = getPieceAt(game.board, from, 8);
+  if (piece?.type !== 'king') {
+    return [];
+  }
+
+  const moves: Square[] = [];
+
+  for (const direction of STRAIGHT_DIRECTIONS) {
+    const destination: Square = { row: from.row + direction.row, col: from.col + direction.col };
+
+    if (isOnBoard(destination)) {
+      const occupant = getPieceAt(game.board, destination, 8);
+
+      if (!occupant) {
+        moves.push(destination);
+      } else if (occupant.color !== piece.color) {
+        moves.push(destination);
+      }
+    }
+  }
+
+  for (const direction of DIAGONAL_DIRECTIONS) {
+    const destination: Square = { row: from.row + direction.row, col: from.col + direction.col };
+
+    if (isOnBoard(destination)) {
+      const occupant = getPieceAt(game.board, destination, 8);
+
+      if (!occupant) {
+        moves.push(destination);
+      } else if (occupant.color !== piece.color) {
+        moves.push(destination);
+      }
+    }
+  }
+
+  return moves;
+}
