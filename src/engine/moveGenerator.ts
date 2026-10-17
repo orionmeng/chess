@@ -200,3 +200,66 @@ export function getKingMoves(game: GameState, from: Square): Square[] {
 
   return moves;
 }
+
+export function getPawnMoves(game: GameState, from: Square): Square[] {
+  const piece = getPieceAt(game.board, from, 8);
+  if (piece?.type !== 'pawn') {
+    return [];
+  }
+
+  const moves: Square[] = [];
+
+  if (piece.color === 'white') {
+    const oneStep: Square = { row: from.row + 1, col: from.col };
+    if (isOnBoard(oneStep) && !getPieceAt(game.board, oneStep, 8)) {
+      moves.push(oneStep);
+      const twoStep: Square = { row: from.row + 2, col: from.col };
+      if (from.row === 1 && !getPieceAt(game.board, twoStep, 8)) {
+        moves.push(twoStep);
+      }
+    }
+
+    const captureLeft: Square = { row: from.row + 1, col: from.col - 1 };
+    if (isOnBoard(captureLeft)) {
+      const occupant = getPieceAt(game.board, captureLeft, 8);
+      if (occupant && occupant.color !== piece.color) {
+        moves.push(captureLeft);
+      }
+    }
+
+    const captureRight: Square = { row: from.row + 1, col: from.col + 1 };
+    if (isOnBoard(captureRight)) {
+      const occupant = getPieceAt(game.board, captureRight, 8);
+      if (occupant && occupant.color !== piece.color) {
+        moves.push(captureRight);
+      }
+    }
+  } else {
+    const oneStep: Square = { row: from.row - 1, col: from.col };
+    if (isOnBoard(oneStep) && !getPieceAt(game.board, oneStep, 8)) {
+      moves.push(oneStep);
+      const twoStep: Square = { row: from.row - 2, col: from.col };
+      if (from.row === 6 && !getPieceAt(game.board, twoStep, 8)) {
+        moves.push(twoStep);
+      }
+    }
+
+    const captureLeft: Square = { row: from.row - 1, col: from.col - 1 };
+    if (isOnBoard(captureLeft)) {
+      const occupant = getPieceAt(game.board, captureLeft, 8);
+      if (occupant && occupant.color !== piece.color) {
+        moves.push(captureLeft);
+      }
+    }
+
+    const captureRight: Square = { row: from.row - 1, col: from.col + 1 };
+    if (isOnBoard(captureRight)) {
+      const occupant = getPieceAt(game.board, captureRight, 8);
+      if (occupant && occupant.color !== piece.color) {
+        moves.push(captureRight);
+      }
+    }
+  }
+
+  return moves;
+}
