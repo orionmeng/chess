@@ -3,6 +3,7 @@ import { createEmptyBoard } from '../../src/engine/board';
 import {
   getBishopMoves,
   getKnightMoves,
+  getRookMoves,
 } from '../../src/engine/moveGenerator';
 import { placePiece } from '../../src/engine/pieces';
 import type { Color, GameState, Piece, Square } from '../../src/engine/types';
@@ -35,6 +36,7 @@ function expectMoves(actual: Square[], expected: Square[]): void {
 }
 
 const generators = [
+  ['rook', getRookMoves],
   ['knight', getKnightMoves],
   ['bishop', getBishopMoves],
 ] as const;
@@ -125,6 +127,50 @@ describe('getBishopMoves', () => {
       square(6, 0),
       square(4, 4),
       square(5, 5),
+    ]);
+  });
+});
+
+describe('getRookMoves', () => {
+  it('moves along all four straight directions until reaching the board edge', () => {
+    const game = createGame([[square(3, 3), piece('rook')]]);
+
+    expectMoves(getRookMoves(game, square(3, 3)), [
+      square(0, 3),
+      square(1, 3),
+      square(2, 3),
+      square(4, 3),
+      square(5, 3),
+      square(6, 3),
+      square(7, 3),
+      square(3, 0),
+      square(3, 1),
+      square(3, 2),
+      square(3, 4),
+      square(3, 5),
+      square(3, 6),
+      square(3, 7),
+    ]);
+  });
+
+  it('can capture an opposing piece but stops at either color of blocker', () => {
+    const game = createGame([
+      [square(3, 3), piece('rook')],
+      [square(1, 3), piece('pawn')],
+      [square(3, 5), piece('pawn', 'black')],
+    ]);
+
+    expectMoves(getRookMoves(game, square(3, 3)), [
+      square(2, 3),
+      square(4, 3),
+      square(5, 3),
+      square(6, 3),
+      square(7, 3),
+      square(3, 2),
+      square(3, 1),
+      square(3, 0),
+      square(3, 4),
+      square(3, 5),
     ]);
   });
 });
