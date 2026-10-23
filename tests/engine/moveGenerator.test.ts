@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyBoard } from '../../src/engine/board';
 import {
+  getBishopMoves,
   getKnightMoves,
 } from '../../src/engine/moveGenerator';
 import { placePiece } from '../../src/engine/pieces';
@@ -35,6 +36,7 @@ function expectMoves(actual: Square[], expected: Square[]): void {
 
 const generators = [
   ['knight', getKnightMoves],
+  ['bishop', getBishopMoves],
 ] as const;
 
 describe.each(generators)('get%sMoves', (type, getMoves) => {
@@ -82,6 +84,48 @@ describe('getKnightMoves', () => {
     const game = createGame([[square(0, 0), piece('knight')]]);
 
     expectMoves(getKnightMoves(game, square(0, 0)), [square(1, 2), square(2, 1)]);
+  });
+});
+
+describe('getBishopMoves', () => {
+  it('moves along all four diagonals until reaching the board edge', () => {
+    const game = createGame([[square(3, 3), piece('bishop')]]);
+
+    expectMoves(getBishopMoves(game, square(3, 3)), [
+      square(0, 0),
+      square(0, 6),
+      square(1, 1),
+      square(1, 5),
+      square(2, 2),
+      square(2, 4),
+      square(4, 2),
+      square(4, 4),
+      square(5, 1),
+      square(5, 5),
+      square(6, 0),
+      square(6, 6),
+      square(7, 7),
+    ]);
+  });
+
+  it('can capture an opposing piece but stops at either color of blocker', () => {
+    const game = createGame([
+      [square(3, 3), piece('bishop')],
+      [square(1, 1), piece('pawn')],
+      [square(5, 5), piece('pawn', 'black')],
+    ]);
+
+    expectMoves(getBishopMoves(game, square(3, 3)), [
+      square(2, 2),
+      square(2, 4),
+      square(1, 5),
+      square(0, 6),
+      square(4, 2),
+      square(5, 1),
+      square(6, 0),
+      square(4, 4),
+      square(5, 5),
+    ]);
   });
 });
 
