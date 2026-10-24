@@ -3,6 +3,7 @@ import { createEmptyBoard } from '../../src/engine/board';
 import {
   getBishopMoves,
   getKnightMoves,
+  getQueenMoves,
   getRookMoves,
 } from '../../src/engine/moveGenerator';
 import { placePiece } from '../../src/engine/pieces';
@@ -39,6 +40,7 @@ const generators = [
   ['rook', getRookMoves],
   ['knight', getKnightMoves],
   ['bishop', getBishopMoves],
+  ['queen', getQueenMoves],
 ] as const;
 
 describe.each(generators)('get%sMoves', (type, getMoves) => {
@@ -172,6 +174,44 @@ describe('getRookMoves', () => {
       square(3, 4),
       square(3, 5),
     ]);
+  });
+});
+
+describe('getQueenMoves', () => {
+  it('moves in straight and diagonal directions without leaving the board', () => {
+    const game = createGame([[square(3, 3), piece('queen')]]);
+    const moves = getQueenMoves(game, square(3, 3));
+
+    expect(moves).toHaveLength(27);
+    expect(moves).toContainEqual(square(0, 3));
+    expect(moves).toContainEqual(square(7, 3));
+    expect(moves).toContainEqual(square(3, 0));
+    expect(moves).toContainEqual(square(3, 7));
+    expect(moves).toContainEqual(square(0, 0));
+    expect(moves).toContainEqual(square(7, 7));
+    expect(moves.every(({ row, col }) => row >= 0 && row < BOARD_SIZE && col >= 0 && col < BOARD_SIZE)).toBe(true);
+  });
+
+  it('can capture an opposing piece but stops at either color of blocker', () => {
+    const game = createGame([
+      [square(3, 3), piece('queen')],
+      [square(1, 3), piece('pawn')],
+      [square(3, 5), piece('pawn', 'black')],
+      [square(1, 1), piece('pawn')],
+      [square(5, 5), piece('pawn', 'black')],
+    ]);
+    const moves = getQueenMoves(game, square(3, 3));
+
+    expect(moves).toContainEqual(square(2, 3));
+    expect(moves).not.toContainEqual(square(1, 3));
+    expect(moves).toContainEqual(square(3, 4));
+    expect(moves).toContainEqual(square(3, 5));
+    expect(moves).not.toContainEqual(square(3, 6));
+    expect(moves).toContainEqual(square(2, 2));
+    expect(moves).not.toContainEqual(square(1, 1));
+    expect(moves).toContainEqual(square(4, 4));
+    expect(moves).toContainEqual(square(5, 5));
+    expect(moves).not.toContainEqual(square(6, 6));
   });
 });
 
