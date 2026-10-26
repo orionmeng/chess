@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyBoard } from '../../src/engine/board';
 import {
   getBishopMoves,
+  getKingMoves,
   getKnightMoves,
   getQueenMoves,
   getRookMoves,
@@ -41,6 +42,7 @@ const generators = [
   ['knight', getKnightMoves],
   ['bishop', getBishopMoves],
   ['queen', getQueenMoves],
+  ['king', getKingMoves],
 ] as const;
 
 describe.each(generators)('get%sMoves', (type, getMoves) => {
@@ -212,6 +214,46 @@ describe('getQueenMoves', () => {
     expect(moves).toContainEqual(square(4, 4));
     expect(moves).toContainEqual(square(5, 5));
     expect(moves).not.toContainEqual(square(6, 6));
+  });
+});
+
+describe('getKingMoves', () => {
+  it('moves one square in any direction from the center of an empty board', () => {
+    const game = createGame([[square(3, 3), piece('king')]]);
+
+    expectMoves(getKingMoves(game, square(3, 3)), [
+      square(2, 2),
+      square(2, 3),
+      square(2, 4),
+      square(3, 2),
+      square(3, 4),
+      square(4, 2),
+      square(4, 3),
+      square(4, 4),
+    ]);
+  });
+
+  it('can capture an opposing piece but not move onto a friendly piece', () => {
+    const game = createGame([
+      [square(3, 3), piece('king')],
+      [square(2, 3), piece('pawn')],
+      [square(4, 4), piece('pawn', 'black')],
+    ]);
+    const moves = getKingMoves(game, square(3, 3));
+
+    expect(moves).toHaveLength(7);
+    expect(moves).not.toContainEqual(square(2, 3));
+    expect(moves).toContainEqual(square(4, 4));
+  });
+
+  it('keeps all moves on the board when the king is in a corner', () => {
+    const game = createGame([[square(0, 0), piece('king')]]);
+
+    expectMoves(getKingMoves(game, square(0, 0)), [
+      square(0, 1),
+      square(1, 0),
+      square(1, 1),
+    ]);
   });
 });
 
