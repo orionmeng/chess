@@ -4,6 +4,7 @@ import {
   getBishopMoves,
   getKingMoves,
   getKnightMoves,
+  getPawnMoves,
   getQueenMoves,
   getRookMoves,
 } from '../../src/engine/moveGenerator';
@@ -38,6 +39,7 @@ function expectMoves(actual: Square[], expected: Square[]): void {
 }
 
 const generators = [
+  ['pawn', getPawnMoves],
   ['rook', getRookMoves],
   ['knight', getKnightMoves],
   ['bishop', getBishopMoves],
@@ -257,3 +259,54 @@ describe('getKingMoves', () => {
   });
 });
 
+describe('getPawnMoves', () => {
+  it('allows white pawns to move one or two squares from their starting row', () => {
+    const game = createGame([[square(1, 3), piece('pawn', 'white')]]);
+
+    expectMoves(getPawnMoves(game, square(1, 3)), [square(2, 3), square(3, 3)]);
+  });
+
+  it('allows black pawns to move one or two squares from their starting row', () => {
+    const game = createGame([[square(6, 4), piece('pawn', 'black')]]);
+
+    expectMoves(getPawnMoves(game, square(6, 4)), [square(5, 4), square(4, 4)]);
+  });
+
+  it('does not move forward when the square directly ahead is occupied', () => {
+    const game = createGame([
+      [square(1, 3), piece('pawn', 'white')],
+      [square(2, 3), piece('rook', 'black')],
+    ]);
+
+    expectMoves(getPawnMoves(game, square(1, 3)), []);
+  });
+
+  it('does not move two squares when the second square is occupied', () => {
+    const game = createGame([
+      [square(1, 3), piece('pawn', 'white')],
+      [square(3, 3), piece('rook', 'black')],
+    ]);
+
+    expectMoves(getPawnMoves(game, square(1, 3)), [square(2, 3)]);
+  });
+
+  it('captures opposing pieces diagonally but cannot capture forward', () => {
+    const game = createGame([
+      [square(3, 3), piece('pawn', 'white')],
+      [square(4, 3), piece('rook', 'black')],
+      [square(4, 2), piece('bishop', 'black')],
+      [square(4, 4), piece('knight', 'black')],
+    ]);
+
+    expectMoves(getPawnMoves(game, square(3, 3)), [square(4, 2), square(4, 4)]);
+  });
+
+  it('does not move diagonally to empty squares or friendly pieces', () => {
+    const game = createGame([
+      [square(3, 3), piece('pawn', 'white')],
+      [square(4, 2), piece('bishop', 'white')],
+    ]);
+
+    expectMoves(getPawnMoves(game, square(3, 3)), [square(4, 3)]);
+  });
+});
