@@ -27,8 +27,8 @@
 // - How should an empty move history be represented?
 
 import { createEmptyBoard } from './board';
-import { placePiece } from './pieces';
-import type { GameState, Piece } from './types';
+import { placePiece, getPieceAt, removePiece } from './pieces';
+import type { GameState, Piece, Move } from './types';
 
 const BOARD_SIZE = 8;
 
@@ -80,4 +80,28 @@ export function createInitialGame(): GameState {
     board,
     history: [],
   };
+}
+
+export function updateGame(game: GameState, move: Move): GameState {
+  const piece = getPieceAt(game.board, move.from, BOARD_SIZE);
+  if (!piece) {
+    throw new Error('No piece at the source square');
+  }
+  if (piece.color !== game.activeColor) {
+    throw new Error('It is not the active player\'s turn');
+  }
+
+  const targetPiece = getPieceAt(game.board, move.to, BOARD_SIZE);
+  if (targetPiece && targetPiece.color === piece.color) {
+    throw new Error('Cannot capture a piece of the same color');
+  }
+
+  const boardWithPiece = placePiece(game.board, move.to, BOARD_SIZE, piece);
+  const nextBoard = removePiece(boardWithPiece, move.from, BOARD_SIZE);
+
+  return {
+    board: nextBoard,
+    activeColor: piece.color === 'white' ? 'black' : 'white',
+    history: [...game.history, move]
+  }
 }
