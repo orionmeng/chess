@@ -60,3 +60,18 @@ export function placePiece(
   nextBoard[index] = piece;
   return nextBoard;
 }
+
+export function removePiece(
+  board: Array<Piece | null>,
+  square: Square,
+  size: number,
+): Array<Piece | null> {
+  if (square.row < 0 || square.row >= size || square.col < 0 || square.col >= size) {
+    throw new Error('Square is outside the board.');
+  }
+
+  const nextBoard = [...board];
+  const index = square.row * size + square.col;
+  nextBoard[index] = null;
+  return nextBoard;
+}
