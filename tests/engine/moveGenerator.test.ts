@@ -4,6 +4,7 @@ import {
   getBishopMoves,
   getKingMoves,
   getKnightMoves,
+  getPawnAttacks,
   getPawnMoves,
   getQueenMoves,
   getRookMoves,
@@ -290,6 +291,29 @@ describe('getPawnMoves', () => {
     expectMoves(getPawnMoves(game, square(1, 3)), [square(2, 3)]);
   });
 
+  it('does not move two squares when the first square is occupied', () => {
+    const game = createGame([
+      [square(1, 3), piece('pawn', 'white')],
+      [square(2, 3), piece('rook', 'black')],
+    ]);
+
+    expectMoves(getPawnMoves(game, square(1, 3)), []);
+  });
+
+  it('does not allow a black pawn to move two squares when either forward square is blocked', () => {
+    const blockedOneStep = createGame([
+      [square(6, 4), piece('pawn', 'black')],
+      [square(5, 4), piece('rook', 'white')],
+    ]);
+    const blockedTwoStep = createGame([
+      [square(6, 4), piece('pawn', 'black')],
+      [square(4, 4), piece('rook', 'white')],
+    ]);
+
+    expectMoves(getPawnMoves(blockedOneStep, square(6, 4)), []);
+    expectMoves(getPawnMoves(blockedTwoStep, square(6, 4)), [square(5, 4)]);
+  });
+
   it('captures opposing pieces diagonally but cannot capture forward', () => {
     const game = createGame([
       [square(3, 3), piece('pawn', 'white')],
@@ -301,6 +325,17 @@ describe('getPawnMoves', () => {
     expectMoves(getPawnMoves(game, square(3, 3)), [square(4, 2), square(4, 4)]);
   });
 
+  it('allows black pawns to capture opposing pieces diagonally but not friendly pieces', () => {
+    const game = createGame([
+      [square(4, 3), piece('pawn', 'black')],
+      [square(3, 2), piece('bishop', 'white')],
+      [square(3, 3), piece('rook', 'white')],
+      [square(3, 4), piece('knight', 'black')],
+    ]);
+
+    expectMoves(getPawnMoves(game, square(4, 3)), [square(3, 2)]);
+  });
+
   it('does not move diagonally to empty squares or friendly pieces', () => {
     const game = createGame([
       [square(3, 3), piece('pawn', 'white')],
@@ -308,5 +343,52 @@ describe('getPawnMoves', () => {
     ]);
 
     expectMoves(getPawnMoves(game, square(3, 3)), [square(4, 3)]);
+  });
+
+  it('does not include off-board forward moves for pawns on their last rank', () => {
+    const whiteGame = createGame([[square(7, 3), piece('pawn', 'white')]]);
+    const blackGame = createGame([[square(0, 3), piece('pawn', 'black')]]);
+
+    expectMoves(getPawnMoves(whiteGame, square(7, 3)), []);
+    expectMoves(getPawnMoves(blackGame, square(0, 3)), []);
+  });
+});
+
+describe('getPawnAttacks', () => {
+  it('returns both forward diagonals for a white pawn even when they are empty', () => {
+    const game = createGame([[square(3, 3), piece('pawn', 'white')]]);
+
+    expectMoves(getPawnAttacks(game, square(3, 3)), [square(4, 2), square(4, 4)]);
+  });
+
+  it('returns both forward diagonals for a black pawn even when they are empty', () => {
+    const game = createGame([[square(4, 3), piece('pawn', 'black')]]);
+
+    expectMoves(getPawnAttacks(game, square(4, 3)), [square(3, 2), square(3, 4)]);
+  });
+
+  it('includes diagonals occupied by either color', () => {
+    const game = createGame([
+      [square(3, 3), piece('pawn', 'white')],
+      [square(4, 2), piece('bishop', 'white')],
+      [square(4, 4), piece('knight', 'black')],
+    ]);
+
+    expectMoves(getPawnAttacks(game, square(3, 3)), [square(4, 2), square(4, 4)]);
+  });
+
+  it('returns only on-board attack squares for pawns at the board edges', () => {
+    const whiteGame = createGame([[square(6, 0), piece('pawn', 'white')]]);
+    const blackGame = createGame([[square(1, 7), piece('pawn', 'black')]]);
+
+    expectMoves(getPawnAttacks(whiteGame, square(6, 0)), [square(7, 1)]);
+    expectMoves(getPawnAttacks(blackGame, square(1, 7)), [square(0, 6)]);
+  });
+
+  it('returns no attack squares when the source does not contain a pawn', () => {
+    const game = createGame([[square(3, 3), piece('rook')]]);
+
+    expect(getPawnAttacks(game, square(3, 3))).toEqual([]);
+    expect(getPawnAttacks(createGame(), square(3, 3))).toEqual([]);
   });
 });
