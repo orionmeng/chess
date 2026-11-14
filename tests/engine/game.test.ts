@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyBoard } from '../../src/engine/board';
 import { getPieceAt, placePiece } from '../../src/engine/pieces';
 import { createInitialGame, updateGame } from '../../src/engine/game';
+import type { Color, PromotionPieceType } from '../../src/engine/types';
 
 const BOARD_SIZE = 8;
 
@@ -117,6 +118,115 @@ describe('createInitialGame', () => {
 			expect(game.board).toEqual(originalBoard);
 			expect(game.activeColor).toBe('white');
 			expect(game.history).toEqual([]);
+		});
+
+		it.each([
+			['source', { row: 1, col: 4.5 }, { row: 2, col: 4 }, 'Square coordinates must be integers.'],
+			['source', { row: NaN, col: 4 }, { row: 2, col: 4 }, 'Square coordinates must be integers.'],
+			['source', { row: 8, col: 4 }, { row: 2, col: 4 }, 'Square is outside the board.'],
+			['source', { row: 1, col: -1 }, { row: 2, col: 4 }, 'Square is outside the board.'],
+			['destination', { row: 1, col: 4 }, { row: 2, col: 4.5 }, 'Square coordinates must be integers.'],
+			['destination', { row: 1, col: 4 }, { row: 2, col: Infinity }, 'Square coordinates must be integers.'],
+			['destination', { row: 1, col: 4 }, { row: 8, col: 4 }, 'Square is outside the board.'],
+			['destination', { row: 1, col: 4 }, { row: 2, col: -1 }, 'Square is outside the board.'],
+		] as const)(
+			'rejects invalid %s coordinates without changing the game',
+			(_part, from, to, error) => {
+				const game = createInitialGame();
+				const originalBoard = [...game.board];
+				const originalHistory = [...game.history];
+
+				expect(() => updateGame(game, { from, to })).toThrow(error);
+				expect(game.board).toEqual(originalBoard);
+				expect(game.activeColor).toBe('white');
+				expect(game.history).toEqual(originalHistory);
+			},
+		);
+
+		it.each([
+			['white', 'queen'], ['white', 'rook'], ['white', 'bishop'], ['white', 'knight'],
+			['black', 'queen'], ['black', 'rook'], ['black', 'bishop'], ['black', 'knight'],
+		] satisfies Array<[Color, PromotionPieceType]>)(
+			'promotes a %s pawn to a %s and records the choice',
+			(color, promotion) => {
+				const from = { row: color === 'white' ? 6 : 1, col: 3 };
+				const to = { row: color === 'white' ? 7 : 0, col: 3 };
+				const pawn = { color, type: 'pawn' as const };
+				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, pawn);
+				const game = { activeColor: color, board, history: [] };
+				const move = { from, to, promotion };
+
+				const nextGame = updateGame(game, move);
+
+				expect(getPieceAt(nextGame.board, from, BOARD_SIZE)).toBeNull();
+				expect(getPieceAt(nextGame.board, to, BOARD_SIZE)).toEqual({ color, type: promotion });
+				expect(nextGame.activeColor).toBe(color === 'white' ? 'black' : 'white');
+				expect(nextGame.history).toEqual([move]);
+				expect(getPieceAt(game.board, from, BOARD_SIZE)).toEqual(pawn);
+				expect(getPieceAt(game.board, to, BOARD_SIZE)).toBeNull();
+				expect(game.history).toEqual([]);
+			},
+		);
+
+		it.each(['white', 'black'] as const)('promotes a %s pawn when capturing on the last rank', (color) => {
+			const from = { row: color === 'white' ? 6 : 1, col: 3 };
+			const to = { row: color === 'white' ? 7 : 0, col: 4 };
+			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
+			board = placePiece(board, to, BOARD_SIZE, {
+				color: color === 'white' ? 'black' : 'white', type: 'rook',
+			});
+			const game = { activeColor: color, board, history: [] };
+
+			const nextGame = updateGame(game, { from, to, promotion: 'knight' });
+
+			expect(getPieceAt(nextGame.board, from, BOARD_SIZE)).toBeNull();
+			expect(getPieceAt(nextGame.board, to, BOARD_SIZE)).toEqual({ color, type: 'knight' });
+			expect(getPieceAt(game.board, to, BOARD_SIZE)?.type).toBe('rook');
+		});
+
+		it.each(['white', 'black'] as const)('requires a promotion choice for a %s pawn on its final rank', (color) => {
+			const from = { row: color === 'white' ? 6 : 1, col: 3 };
+			const to = { row: color === 'white' ? 7 : 0, col: 3 };
+			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
+			const game = { activeColor: color, board, history: [] };
+
+			expect(() => updateGame(game, { from, to })).toThrow('Promotion piece must be specified');
+			expect(getPieceAt(game.board, from, BOARD_SIZE)).toEqual({ color, type: 'pawn' });
+		});
+
+		it.each([
+			['white', 5, 6], ['white', 1, 0],
+			['black', 2, 1], ['black', 6, 7],
+		] satisfies Array<[Color, number, number]>)(
+			'rejects a %s pawn promotion on row %i to row %i',
+			(color, fromRow, toRow) => {
+				const from = { row: fromRow, col: 3 };
+				const to = { row: toRow, col: 3 };
+				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
+				const game = { activeColor: color, board, history: [] };
+
+				expect(() => updateGame(game, { from, to, promotion: 'queen' }))
+					.toThrow('Promotion can only occur on the last rank for the pawn color');
+			},
+		);
+
+		it('rejects a promotion choice for a non-pawn', () => {
+			const from = { row: 3, col: 3 };
+			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'rook' });
+			const game = { activeColor: 'white' as const, board, history: [] };
+
+			expect(() => updateGame(game, { from, to: { row: 3, col: 4 }, promotion: 'queen' }))
+				.toThrow('Only pawns can be promoted');
+		});
+
+		it('rejects an invalid promotion choice at runtime', () => {
+			const from = { row: 6, col: 3 };
+			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'pawn' });
+			const game = { activeColor: 'white' as const, board, history: [] };
+			const move = { from, to: { row: 7, col: 3 }, promotion: 'king' as const };
+
+			// @ts-expect-error Invalid runtime input must still be rejected.
+			expect(() => updateGame(game, move)).toThrow('Invalid promotion piece');
 		});
 	});
 
