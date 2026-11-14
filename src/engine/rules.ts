@@ -53,7 +53,8 @@ function getPotentialMoves(game: GameState, square: Square): Square[] {
 }
 
 // Returns candidate destinations that neither capture a king nor leave the moving player's king in check.
-// Returns [] for an empty square or inactive piece; special moves are not yet supported.
+// Returns [] for an empty square or inactive piece; castling and en passant are not yet supported.
+// Promotion destinations are returned once; the caller must choose the promotion piece.
 export function getLegalMoves(game: GameState, square: Square): Square[] {
   const piece = getPieceAt(game.board, square, BOARD_SIZE);
   if (!piece || game.activeColor !== piece.color) {
@@ -67,7 +68,10 @@ export function getLegalMoves(game: GameState, square: Square): Square[] {
       return false;
     }
 
-    const newGame = updateGame(game, { from: square, to: move });
+    const promotionRow = piece.color === 'white' ? BOARD_SIZE - 1 : 0;
+    // The chosen promotion piece does not affect whether the moving king is safe on this destination.
+    const promotion = piece.type === 'pawn' && move.row === promotionRow ? 'queen' : undefined;
+    const newGame = updateGame(game, { from: square, to: move, promotion });
     return !isInCheck(newGame, piece.color);
   });
 }
