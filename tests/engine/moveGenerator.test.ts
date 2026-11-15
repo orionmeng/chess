@@ -28,7 +28,17 @@ function createGame(entries: Array<[Square, Piece]> = []): GameState {
     board = placePiece(board, position, BOARD_SIZE, occupant);
   }
 
-  return { activeColor: 'white', board, history: [] };
+  return {
+    activeColor: 'white',
+    board,
+    history: [],
+    castlingRights: {
+      whiteKingSide: false,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    },
+  };
 }
 
 function sorted(squares: Square[]): Square[] {

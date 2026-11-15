@@ -6,12 +6,21 @@ import type { Color, GameState, Piece, Square } from '../../src/engine/types';
 
 const BOARD_SIZE = 8;
 
-function createGame(entries: Array<[Square, Piece]>, activeColor: Color = 'white'): GameState {
+function createGame(
+  entries: Array<[Square, Piece]>,
+  activeColor: Color = 'white',
+  castlingRights: GameState['castlingRights'] = {
+    whiteKingSide: false,
+    whiteQueenSide: false,
+    blackKingSide: false,
+    blackQueenSide: false,
+  },
+): GameState {
   let board = createEmptyBoard();
   for (const [square, piece] of entries) {
     board = placePiece(board, square, BOARD_SIZE, piece);
   }
-  return { activeColor, board, history: [] };
+  return { activeColor, board, history: [], castlingRights };
 }
 
 function expectMoves(actual: Square[], expected: Square[]): void {
@@ -131,6 +140,108 @@ describe('isSquareAttacked', () => {
 });
 
 describe('getLegalMoves', () => {
+  it.each([
+    ['white', 'kingSide'], ['white', 'queenSide'],
+    ['black', 'kingSide'], ['black', 'queenSide'],
+  ] as const)('generates %s %s castling when available', (color, side) => {
+    const homeRow = color === 'white' ? 0 : 7;
+    const king = { row: homeRow, col: 4 };
+    const rook = { row: homeRow, col: side === 'kingSide' ? 7 : 0 };
+    const destination = { row: homeRow, col: side === 'kingSide' ? 6 : 2 };
+    const enemyColor = color === 'white' ? 'black' : 'white';
+    const rights = {
+      whiteKingSide: color === 'white' && side === 'kingSide',
+      whiteQueenSide: color === 'white' && side === 'queenSide',
+      blackKingSide: color === 'black' && side === 'kingSide',
+      blackQueenSide: color === 'black' && side === 'queenSide',
+    };
+    const game = createGame([
+      [king, { type: 'king', color }],
+      [rook, { type: 'rook', color }],
+      [{ row: color === 'white' ? 7 : 0, col: 0 }, { type: 'king', color: enemyColor }],
+    ], color, rights);
+
+    expect(getLegalMoves(game, king)).toContainEqual(destination);
+  });
+
+  it.each([
+    ['white', 'kingSide', 5],
+    ['white', 'queenSide', 1],
+    ['white', 'queenSide', 2],
+    ['white', 'queenSide', 3],
+    ['black', 'kingSide', 5],
+    ['black', 'queenSide', 1],
+    ['black', 'queenSide', 2],
+    ['black', 'queenSide', 3],
+  ] as const)(
+    'does not castle %s %s when path column %i is occupied',
+    (color, side, blockerCol) => {
+    const homeRow = color === 'white' ? 0 : 7;
+    const king = { row: homeRow, col: 4 };
+    const rook = { row: homeRow, col: side === 'kingSide' ? 7 : 0 };
+    const rights = {
+      whiteKingSide: color === 'white' && side === 'kingSide',
+      whiteQueenSide: color === 'white' && side === 'queenSide',
+      blackKingSide: color === 'black' && side === 'kingSide',
+      blackQueenSide: color === 'black' && side === 'queenSide',
+    };
+    const game = createGame([
+      [king, { type: 'king', color }],
+      [rook, { type: 'rook', color }],
+      [{ row: homeRow, col: blockerCol }, { type: 'bishop', color }],
+      [{ row: color === 'white' ? 7 : 0, col: 0 }, {
+        type: 'king',
+        color: color === 'white' ? 'black' : 'white',
+      }],
+    ], color, rights);
+
+    expect(getLegalMoves(game, king)).not.toContainEqual({
+      row: homeRow,
+      col: side === 'kingSide' ? 6 : 2,
+    });
+  });
+
+  it.each([
+    ['start', { row: 3, col: 4 }],
+    ['transit', { row: 3, col: 5 }],
+    ['destination', { row: 3, col: 6 }],
+  ] as const)('does not castle through check on the %s square', (_name, attackerSquare) => {
+    const king = { row: 0, col: 4 };
+    const game = createGame([
+      [king, { type: 'king', color: 'white' }],
+      [{ row: 0, col: 7 }, { type: 'rook', color: 'white' }],
+      [attackerSquare, { type: 'rook', color: 'black' }],
+      [{ row: 7, col: 0 }, { type: 'king', color: 'black' }],
+    ], 'white', {
+      whiteKingSide: true,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    });
+
+    expect(getLegalMoves(game, king)).not.toContainEqual({ row: 0, col: 6 });
+  });
+
+  it('does not castle without the corresponding right or rook', () => {
+    const king = { row: 0, col: 4 };
+    const rook = { row: 0, col: 7 };
+    const noRight = createGame([
+      [king, { type: 'king', color: 'white' }],
+      [rook, { type: 'rook', color: 'white' }],
+    ]);
+    const noRook = createGame([
+      [king, { type: 'king', color: 'white' }],
+    ], 'white', {
+      whiteKingSide: true,
+      whiteQueenSide: false,
+      blackKingSide: false,
+      blackQueenSide: false,
+    });
+
+    expect(getLegalMoves(noRight, king)).not.toContainEqual({ row: 0, col: 6 });
+    expect(getLegalMoves(noRook, king)).not.toContainEqual({ row: 0, col: 6 });
+  });
+
   it.each(['white', 'black'] as const)(
     'returns forward and capture promotion destinations for %s without choosing a piece',
     (color) => {

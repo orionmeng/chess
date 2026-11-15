@@ -5,6 +5,12 @@ import { createInitialGame, updateGame } from '../../src/engine/game';
 import type { Color, PromotionPieceType } from '../../src/engine/types';
 
 const BOARD_SIZE = 8;
+const NO_CASTLING_RIGHTS = {
+	whiteKingSide: false,
+	whiteQueenSide: false,
+	blackKingSide: false,
+	blackQueenSide: false,
+};
 
 function countPiecesByColor(
 	board: ReturnType<typeof createInitialGame>['board'],
@@ -47,7 +53,7 @@ describe('createInitialGame', () => {
 			const to = { row: 4, col: 4 };
 			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, whitePawn);
 			board = placePiece(board, to, BOARD_SIZE, blackPawn);
-			const game = { activeColor: 'white' as const, board, history: [] };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 
 			const nextGame = updateGame(game, { from, to });
 
@@ -153,7 +159,7 @@ describe('createInitialGame', () => {
 				const to = { row: color === 'white' ? 7 : 0, col: 3 };
 				const pawn = { color, type: 'pawn' as const };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, pawn);
-				const game = { activeColor: color, board, history: [] };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 				const move = { from, to, promotion };
 
 				const nextGame = updateGame(game, move);
@@ -175,7 +181,7 @@ describe('createInitialGame', () => {
 			board = placePiece(board, to, BOARD_SIZE, {
 				color: color === 'white' ? 'black' : 'white', type: 'rook',
 			});
-			const game = { activeColor: color, board, history: [] };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 
 			const nextGame = updateGame(game, { from, to, promotion: 'knight' });
 
@@ -188,7 +194,7 @@ describe('createInitialGame', () => {
 			const from = { row: color === 'white' ? 6 : 1, col: 3 };
 			const to = { row: color === 'white' ? 7 : 0, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-			const game = { activeColor: color, board, history: [] };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 
 			expect(() => updateGame(game, { from, to })).toThrow('Promotion piece must be specified');
 			expect(getPieceAt(game.board, from, BOARD_SIZE)).toEqual({ color, type: 'pawn' });
@@ -203,7 +209,7 @@ describe('createInitialGame', () => {
 				const from = { row: fromRow, col: 3 };
 				const to = { row: toRow, col: 3 };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-				const game = { activeColor: color, board, history: [] };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 
 				expect(() => updateGame(game, { from, to, promotion: 'queen' }))
 					.toThrow('Promotion can only occur on the last rank for the pawn color');
@@ -213,16 +219,116 @@ describe('createInitialGame', () => {
 		it('rejects a promotion choice for a non-pawn', () => {
 			const from = { row: 3, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'rook' });
-			const game = { activeColor: 'white' as const, board, history: [] };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 
 			expect(() => updateGame(game, { from, to: { row: 3, col: 4 }, promotion: 'queen' }))
 				.toThrow('Only pawns can be promoted');
 		});
 
+		it.each([
+			['white', 'kingSide'], ['white', 'queenSide'],
+			['black', 'kingSide'], ['black', 'queenSide'],
+		] as const)('moves the %s rook when the king castles %s', (color, castle) => {
+			const homeRow = color === 'white' ? 0 : 7;
+			const kingFrom = { row: homeRow, col: 4 };
+			const rookFrom = { row: homeRow, col: castle === 'kingSide' ? 7 : 0 };
+			const kingTo = { row: homeRow, col: castle === 'kingSide' ? 6 : 2 };
+			const rookTo = { row: homeRow, col: castle === 'kingSide' ? 5 : 3 };
+			let board = placePiece(createEmptyBoard(), kingFrom, BOARD_SIZE, { color, type: 'king' });
+			board = placePiece(board, rookFrom, BOARD_SIZE, { color, type: 'rook' });
+			const rights = {
+				whiteKingSide: true,
+				whiteQueenSide: true,
+				blackKingSide: true,
+				blackQueenSide: true,
+			};
+			const game = { activeColor: color, board, history: [], castlingRights: rights };
+			const move = { from: kingFrom, to: kingTo, castle };
+
+			const nextGame = updateGame(game, move);
+
+			expect(getPieceAt(nextGame.board, kingFrom, BOARD_SIZE)).toBeNull();
+			expect(getPieceAt(nextGame.board, rookFrom, BOARD_SIZE)).toBeNull();
+			expect(getPieceAt(nextGame.board, kingTo, BOARD_SIZE)).toEqual({ color, type: 'king' });
+			expect(getPieceAt(nextGame.board, rookTo, BOARD_SIZE)).toEqual({ color, type: 'rook' });
+			expect(nextGame.history).toEqual([move]);
+			expect(nextGame.castlingRights[`${color}KingSide` as 'whiteKingSide' | 'blackKingSide']).toBe(false);
+			expect(nextGame.castlingRights[`${color}QueenSide` as 'whiteQueenSide' | 'blackQueenSide']).toBe(false);
+			expect(nextGame.castlingRights[`${color === 'white' ? 'black' : 'white'}KingSide` as 'whiteKingSide' | 'blackKingSide']).toBe(true);
+			expect(game.castlingRights.whiteKingSide).toBe(true);
+			expect(game.board[kingFrom.row * BOARD_SIZE + kingFrom.col]).toEqual({ color, type: 'king' });
+		});
+
+		it('revokes both castling rights when a king moves normally', () => {
+			const from = { row: 0, col: 4 };
+			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'king' });
+			const game = {
+				activeColor: 'white' as const,
+				board,
+				history: [],
+				castlingRights: {
+					whiteKingSide: true, whiteQueenSide: true,
+					blackKingSide: true, blackQueenSide: true,
+				},
+			};
+
+			const nextGame = updateGame(game, { from, to: { row: 1, col: 4 } });
+
+			expect(nextGame.castlingRights.whiteKingSide).toBe(false);
+			expect(nextGame.castlingRights.whiteQueenSide).toBe(false);
+			expect(nextGame.castlingRights.blackKingSide).toBe(true);
+			expect(nextGame.castlingRights.blackQueenSide).toBe(true);
+			expect(game.castlingRights.whiteKingSide).toBe(true);
+		});
+
+		it.each([
+			['white', 0, 0, 'whiteQueenSide'],
+			['white', 0, 7, 'whiteKingSide'],
+			['black', 7, 0, 'blackQueenSide'],
+			['black', 7, 7, 'blackKingSide'],
+		] as const)('revokes %s rook castling rights when that corner rook moves', (color, row, col, right) => {
+			const from = { row, col };
+			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'rook' });
+			const rights = {
+				whiteKingSide: true,
+				whiteQueenSide: true,
+				blackKingSide: true,
+				blackQueenSide: true,
+			};
+			const game = { activeColor: color, board, history: [], castlingRights: rights };
+
+			const nextGame = updateGame(game, { from, to: { row: row === 0 ? 1 : 6, col } });
+
+			expect(nextGame.castlingRights[right]).toBe(false);
+			expect(game.castlingRights[right]).toBe(true);
+		});
+
+		it('revokes castling rights when a rook is captured on its starting square', () => {
+			const from = { row: 3, col: 7 };
+			const to = { row: 7, col: 7 };
+			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'rook' });
+			board = placePiece(board, to, BOARD_SIZE, { color: 'black', type: 'rook' });
+			const game = {
+				activeColor: 'white' as const,
+				board,
+				history: [],
+				castlingRights: {
+					whiteKingSide: true, whiteQueenSide: true,
+					blackKingSide: true, blackQueenSide: true,
+				},
+			};
+
+			const nextGame = updateGame(game, { from, to });
+
+			expect(nextGame.castlingRights.blackKingSide).toBe(false);
+			expect(nextGame.castlingRights.blackQueenSide).toBe(true);
+			expect(game.castlingRights.blackKingSide).toBe(true);
+		});
+
 		it('rejects an invalid promotion choice at runtime', () => {
 			const from = { row: 6, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'pawn' });
-			const game = { activeColor: 'white' as const, board, history: [] };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
 			const move = { from, to: { row: 7, col: 3 }, promotion: 'king' as const };
 
 			// @ts-expect-error Invalid runtime input must still be rejected.
@@ -278,5 +384,16 @@ describe('createInitialGame', () => {
 
 		expect(game.activeColor).toBe('white');
 		expect(game.history).toEqual([]);
+	});
+
+	it('starts with all castling rights available', () => {
+		const game = createInitialGame();
+
+		expect(game.castlingRights).toEqual({
+			whiteKingSide: true,
+			whiteQueenSide: true,
+			blackKingSide: true,
+			blackQueenSide: true,
+		});
 	});
 });
