@@ -28,7 +28,7 @@
 
 import { createEmptyBoard, isOnBoard } from './board';
 import { placePiece, getPieceAt, removePiece } from './pieces';
-import type { GameState, Piece, Move, Square } from './types';
+import type { CastleSide, CastlingRights, GameState, Piece, Move, Square } from './types';
 
 const BOARD_SIZE = 8;
 
@@ -39,6 +39,35 @@ function validateMoveSquare(square: Square): void {
   if (!isOnBoard(square)) {
     throw new Error('Square is outside the board.');
   }
+}
+
+function castlingRightKey(color: 'white' | 'black', side: CastleSide): keyof CastlingRights {
+  if (color === 'white') {
+    return side === 'kingSide' ? 'whiteKingSide' : 'whiteQueenSide';
+  }
+  return side === 'kingSide' ? 'blackKingSide' : 'blackQueenSide';
+}
+
+function revokeKingCastlingRights(rights: CastlingRights, color: 'white' | 'black'): CastlingRights {
+  return {
+    ...rights,
+    [castlingRightKey(color, 'kingSide')]: false,
+    [castlingRightKey(color, 'queenSide')]: false,
+  };
+}
+
+function revokeRookCastlingRight(
+  rights: CastlingRights,
+  color: 'white' | 'black',
+  square: Square,
+): CastlingRights {
+  const homeRow = color === 'white' ? 0 : BOARD_SIZE - 1;
+  if (square.row !== homeRow || (square.col !== 0 && square.col !== BOARD_SIZE - 1)) {
+    return rights;
+  }
+
+  const side: CastleSide = square.col === 0 ? 'queenSide' : 'kingSide';
+  return { ...rights, [castlingRightKey(color, side)]: false };
 }
 
 export function createInitialGame(): GameState {
@@ -88,11 +117,17 @@ export function createInitialGame(): GameState {
     activeColor: 'white',
     board,
     history: [],
+    castlingRights: {
+      whiteKingSide: true,
+      whiteQueenSide: true,
+      blackKingSide: true,
+      blackQueenSide: true,
+    },
   };
 }
 
-// Applies a selected move without checking its movement rules or king safety.
-// A pawn reaching its promotion rank requires a promotion choice on the move.
+// Applies a selected move without checking ordinary movement rules or king safety.
+// Castling requires a castle marker; promotion moves require a promotion choice.
 export function updateGame(game: GameState, move: Move): GameState {
   validateMoveSquare(move.from);
   validateMoveSquare(move.to);
@@ -108,6 +143,45 @@ export function updateGame(game: GameState, move: Move): GameState {
   const targetPiece = getPieceAt(game.board, move.to, BOARD_SIZE);
   if (targetPiece && targetPiece.color === piece.color) {
     throw new Error('Cannot capture a piece of the same color');
+  }
+
+  let nextCastlingRights = game.castlingRights;
+  if (move.castle !== undefined) {
+    if (move.castle !== 'kingSide' && move.castle !== 'queenSide') {
+      throw new Error('Invalid castle side');
+    }
+    if (piece.type !== 'king') {
+      throw new Error('Only a king can castle');
+    }
+
+    const homeRow = piece.color === 'white' ? 0 : BOARD_SIZE - 1;
+    const expectedDestinationCol = move.castle === 'kingSide' ? 6 : 2;
+    const rookCol = move.castle === 'kingSide' ? BOARD_SIZE - 1 : 0;
+    const rightKey = castlingRightKey(piece.color, move.castle);
+    const rookSquare = { row: homeRow, col: rookCol };
+    const rook = getPieceAt(game.board, rookSquare, BOARD_SIZE);
+
+    if (move.from.row !== homeRow || move.from.col !== 4
+      || move.to.row !== homeRow || move.to.col !== expectedDestinationCol
+      || !game.castlingRights[rightKey]) {
+      throw new Error('Castling is not available');
+    }
+    if (rook?.type !== 'rook' || rook.color !== piece.color) {
+      throw new Error('Castling rook is not in its starting square');
+    }
+
+    const pathCols = move.castle === 'kingSide' ? [5, 6] : [1, 2, 3];
+    if (pathCols.some(col => getPieceAt(game.board, { row: homeRow, col }, BOARD_SIZE))) {
+      throw new Error('Castling path must be clear');
+    }
+
+    nextCastlingRights = revokeKingCastlingRights(nextCastlingRights, piece.color);
+  } else if (piece.type === 'king'
+    && move.from.col === 4
+    && move.from.row === (piece.color === 'white' ? 0 : BOARD_SIZE - 1)
+    && move.to.row === move.from.row
+    && (move.to.col === 2 || move.to.col === 6)) {
+    throw new Error('Castling move must specify castle side');
   }
 
   const promotion = move.promotion;
@@ -130,12 +204,34 @@ export function updateGame(game: GameState, move: Move): GameState {
     throw new Error('Only pawns can be promoted');
   }
 
+  if (piece.type === 'king' && move.castle === undefined) {
+    nextCastlingRights = revokeKingCastlingRights(nextCastlingRights, piece.color);
+  } else if (piece.type === 'rook') {
+    nextCastlingRights = revokeRookCastlingRight(nextCastlingRights, piece.color, move.from);
+  }
+
+  if (targetPiece?.type === 'rook') {
+    nextCastlingRights = revokeRookCastlingRight(nextCastlingRights, targetPiece.color, move.to);
+  }
+
   const boardWithPiece = placePiece(game.board, move.to, BOARD_SIZE, piece);
-  const nextBoard = removePiece(boardWithPiece, move.from, BOARD_SIZE);
+  let nextBoard = removePiece(boardWithPiece, move.from, BOARD_SIZE);
+  if (move.castle !== undefined) {
+    const homeRow = piece.color === 'white' ? 0 : BOARD_SIZE - 1;
+    const rookFrom = { row: homeRow, col: move.castle === 'kingSide' ? 7 : 0 };
+    const rookTo = { row: homeRow, col: move.castle === 'kingSide' ? 5 : 3 };
+    const rook = getPieceAt(game.board, rookFrom, BOARD_SIZE);
+    if (!rook) {
+      throw new Error('Castling rook is not in its starting square');
+    }
+    nextBoard = removePiece(nextBoard, rookFrom, BOARD_SIZE);
+    nextBoard = placePiece(nextBoard, rookTo, BOARD_SIZE, rook);
+  }
 
   return {
     board: nextBoard,
     activeColor: piece.color === 'white' ? 'black' : 'white',
-    history: [...game.history, move]
+    history: [...game.history, move],
+    castlingRights: nextCastlingRights,
   }
 }

@@ -26,7 +26,24 @@
 export type Color = 'white' | 'black';
 export type PieceType = 'pawn' | 'rook' | 'knight' | 'bishop' | 'queen' | 'king';
 export type PromotionPieceType = 'queen' | 'rook' | 'bishop' | 'knight';
+export type CastleSide = 'kingSide' | 'queenSide';
 export type Piece = { color: Color; type: PieceType };
 export type Square = { row: number; col: number };
-export type Move = { from: Square; to: Square; promotion?: PromotionPieceType };
-export type GameState = { activeColor: Color; board: Array<Piece | null>; history: Move[] };
+export type Move = {
+  from: Square;
+  to: Square;
+  promotion?: PromotionPieceType;
+  castle?: CastleSide;
+};
+export type CastlingRights = {
+  whiteKingSide: boolean;
+  whiteQueenSide: boolean;
+  blackKingSide: boolean;
+  blackQueenSide: boolean;
+};
+export type GameState = {
+  activeColor: Color;
+  board: Array<Piece | null>;
+  history: Move[];
+  castlingRights: CastlingRights;
+};

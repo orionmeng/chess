@@ -9,8 +9,8 @@ import {
   getRookMoves,
   getPawnAttacks,
 } from './moveGenerator';
-import { getPieceAt } from './pieces';
-import type { Color, GameState, Square } from './types';
+import { getPieceAt, removePiece } from './pieces';
+import type { CastleSide, Color, GameState, Piece, Square } from './types';
 
 const BOARD_SIZE = 8;
 
@@ -52,8 +52,63 @@ function getPotentialMoves(game: GameState, square: Square): Square[] {
   }
 }
 
+function getCastlingCandidates(
+  game: GameState,
+  from: Square,
+  piece: Piece,
+): Array<{ to: Square; castle: CastleSide }> {
+  if (piece.type !== 'king') {
+    return [];
+  }
+
+  const homeRow = piece.color === 'white' ? 0 : BOARD_SIZE - 1;
+  if (from.row !== homeRow || from.col !== 4) {
+    return [];
+  }
+
+  const enemyColor = piece.color === 'white' ? 'black' : 'white';
+  const sides: CastleSide[] = ['kingSide', 'queenSide'];
+  const candidates: Array<{ to: Square; castle: CastleSide }> = [];
+
+  for (const side of sides) {
+    const isKingSide = side === 'kingSide';
+    const right = piece.color === 'white'
+      ? (isKingSide ? game.castlingRights.whiteKingSide : game.castlingRights.whiteQueenSide)
+      : (isKingSide ? game.castlingRights.blackKingSide : game.castlingRights.blackQueenSide);
+    if (!right) {
+      continue;
+    }
+
+    const rookSquare = { row: homeRow, col: isKingSide ? 7 : 0 };
+    const rook = getPieceAt(game.board, rookSquare, BOARD_SIZE);
+    if (rook?.type !== 'rook' || rook.color !== piece.color) {
+      continue;
+    }
+
+    const emptyCols = isKingSide ? [5, 6] : [1, 2, 3];
+    if (emptyCols.some(col => getPieceAt(game.board, { row: homeRow, col }, BOARD_SIZE))) {
+      continue;
+    }
+
+    const kingPathCols = isKingSide ? [4, 5, 6] : [4, 3, 2];
+    const boardWithoutKing = removePiece(game.board, from, BOARD_SIZE);
+    const gameWithoutKing = { ...game, board: boardWithoutKing };
+    if (kingPathCols.some(col =>
+      isSquareAttacked(gameWithoutKing, { row: homeRow, col }, enemyColor))) {
+      continue;
+    }
+
+    candidates.push({
+      to: { row: homeRow, col: isKingSide ? 6 : 2 },
+      castle: side,
+    });
+  }
+
+  return candidates;
+}
+
 // Returns candidate destinations that neither capture a king nor leave the moving player's king in check.
-// Returns [] for an empty square or inactive piece; castling and en passant are not yet supported.
+// Returns [] for an empty square or inactive piece; en passant is not yet supported.
 // Promotion destinations are returned once; the caller must choose the promotion piece.
 export function getLegalMoves(game: GameState, square: Square): Square[] {
   const piece = getPieceAt(game.board, square, BOARD_SIZE);
@@ -61,19 +116,26 @@ export function getLegalMoves(game: GameState, square: Square): Square[] {
     return [];
   }
 
-  const potentialMoves = getPotentialMoves(game, square);
+  const potentialMoves: Array<{ to: Square; castle?: CastleSide }> =
+    getPotentialMoves(game, square).map(to => ({ to }));
+  potentialMoves.push(...getCastlingCandidates(game, square, piece));
 
-  return potentialMoves.filter(move => {
-    if (getPieceAt(game.board, move, BOARD_SIZE)?.type === 'king') {
+  return potentialMoves.filter(candidate => {
+    if (getPieceAt(game.board, candidate.to, BOARD_SIZE)?.type === 'king') {
       return false;
     }
 
     const promotionRow = piece.color === 'white' ? BOARD_SIZE - 1 : 0;
     // The chosen promotion piece does not affect whether the moving king is safe on this destination.
-    const promotion = piece.type === 'pawn' && move.row === promotionRow ? 'queen' : undefined;
-    const newGame = updateGame(game, { from: square, to: move, promotion });
+    const promotion = piece.type === 'pawn' && candidate.to.row === promotionRow ? 'queen' : undefined;
+    const newGame = updateGame(game, {
+      from: square,
+      to: candidate.to,
+      promotion,
+      castle: candidate.castle,
+    });
     return !isInCheck(newGame, piece.color);
-  });
+  }).map(candidate => candidate.to);
 }
 
 // Checks whether attackerColor attacks the square, regardless of occupancy or pins.
