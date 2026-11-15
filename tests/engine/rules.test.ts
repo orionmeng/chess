@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyBoard } from '../../src/engine/board';
+import { createInitialGame, updateGame } from '../../src/engine/game';
 import { placePiece } from '../../src/engine/pieces';
-import { getLegalMoves, isInCheck, isSquareAttacked } from '../../src/engine/rules';
+import { getLegalMoves, isCheckmate, isInCheck, isSquareAttacked, isStalemate } from '../../src/engine/rules';
 import type { Color, GameState, Piece, Square } from '../../src/engine/types';
 
 const BOARD_SIZE = 8;
@@ -30,6 +31,89 @@ function expectMoves(actual: Square[], expected: Square[]): void {
 
   expect(sortSquares(actual)).toEqual(sortSquares(expected));
 }
+
+describe('game-ending states', () => {
+  it.each(['white', 'black'] as const)('detects checkmate for %s', (color) => {
+    const row = (value: number) => color === 'white' ? value : 7 - value;
+    const enemy = color === 'white' ? 'black' : 'white';
+    const game = createGame([
+      [{ row: row(0), col: 0 }, { type: 'king', color }],
+      [{ row: row(1), col: 1 }, { type: 'queen', color: enemy }],
+      [{ row: row(2), col: 2 }, { type: 'king', color: enemy }],
+    ], color);
+
+    expect(isCheckmate(game)).toBe(true);
+    expect(isStalemate(game)).toBe(false);
+  });
+
+  it.each(['white', 'black'] as const)('detects stalemate for %s', (color) => {
+    const row = (value: number) => color === 'white' ? value : 7 - value;
+    const enemy = color === 'white' ? 'black' : 'white';
+    const game = createGame([
+      [{ row: row(0), col: 0 }, { type: 'king', color }],
+      [{ row: row(1), col: 2 }, { type: 'queen', color: enemy }],
+      [{ row: row(2), col: 1 }, { type: 'king', color: enemy }],
+    ], color);
+
+    expect(isCheckmate(game)).toBe(false);
+    expect(isStalemate(game)).toBe(true);
+  });
+
+  it('does not call checkmate when another piece can capture the attacker', () => {
+    const game = createGame([
+      [{ row: 0, col: 0 }, { type: 'king', color: 'white' }],
+      [{ row: 1, col: 7 }, { type: 'rook', color: 'white' }],
+      [{ row: 1, col: 1 }, { type: 'queen', color: 'black' }],
+      [{ row: 2, col: 2 }, { type: 'king', color: 'black' }],
+    ]);
+
+    expect(isInCheck(game, 'white')).toBe(true);
+    expect(getLegalMoves(game, { row: 0, col: 0 })).toEqual([]);
+    expect(isCheckmate(game)).toBe(false);
+    expect(isStalemate(game)).toBe(false);
+  });
+
+  it('does not call stalemate when another piece can move', () => {
+    const game = createGame([
+      [{ row: 0, col: 0 }, { type: 'king', color: 'white' }],
+      [{ row: 1, col: 7 }, { type: 'pawn', color: 'white' }],
+      [{ row: 1, col: 2 }, { type: 'queen', color: 'black' }],
+      [{ row: 2, col: 1 }, { type: 'king', color: 'black' }],
+    ]);
+
+    expect(getLegalMoves(game, { row: 0, col: 0 })).toEqual([]);
+    expect(isCheckmate(game)).toBe(false);
+    expect(isStalemate(game)).toBe(false);
+  });
+
+  it("detects checkmate after the moves of Fool's Mate without changing the state", () => {
+    let game = createInitialGame();
+    for (const move of [
+      { from: { row: 1, col: 5 }, to: { row: 2, col: 5 } },
+      { from: { row: 6, col: 4 }, to: { row: 4, col: 4 } },
+      { from: { row: 1, col: 6 }, to: { row: 3, col: 6 } },
+      { from: { row: 7, col: 3 }, to: { row: 3, col: 7 } },
+    ]) {
+      expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+      game = updateGame(game, move);
+    }
+    const board = [...game.board];
+    const history = [...game.history];
+
+    expect(isCheckmate(game)).toBe(true);
+    expect(isStalemate(game)).toBe(false);
+    expect(game.board).toEqual(board);
+    expect(game.history).toEqual(history);
+    expect(game.activeColor).toBe('white');
+  });
+
+  it('throws when the active player has no king', () => {
+    const game = createGame([[{ row: 7, col: 7 }, { type: 'king', color: 'black' }]]);
+
+    expect(() => isCheckmate(game)).toThrow('King not found on the board');
+    expect(() => isStalemate(game)).toThrow('King not found on the board');
+  });
+});
 
 describe('isSquareAttacked', () => {
   it.each([
