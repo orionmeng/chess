@@ -123,6 +123,7 @@ export function createInitialGame(): GameState {
       blackKingSide: true,
       blackQueenSide: true,
     },
+    enPassantTarget: null,
   };
 }
 
@@ -144,6 +145,31 @@ export function updateGame(game: GameState, move: Move): GameState {
   if (targetPiece && targetPiece.color === piece.color) {
     throw new Error('Cannot capture a piece of the same color');
   }
+
+  let enPassantCaptureSquare: Square | null = null;
+  if (piece.type === 'pawn' && !targetPiece && game.enPassantTarget
+    && move.to.row === game.enPassantTarget.row
+    && move.to.col === game.enPassantTarget.col
+    && move.from.col !== move.to.col) {
+    const direction = piece.color === 'white' ? 1 : -1;
+    const capturedPawnSquare = { row: move.from.row, col: move.to.col };
+    const capturedPawn = getPieceAt(game.board, capturedPawnSquare, BOARD_SIZE);
+    if (move.to.row !== move.from.row + direction
+      || Math.abs(move.to.col - move.from.col) !== 1
+      || capturedPawn?.type !== 'pawn'
+      || capturedPawn.color === piece.color) {
+      throw new Error('Invalid en passant capture');
+    }
+    enPassantCaptureSquare = capturedPawnSquare;
+  }
+
+  const startingPawnRow = piece.color === 'white' ? 1 : BOARD_SIZE - 2;
+  const enPassantTarget = piece.type === 'pawn'
+    && move.from.row === startingPawnRow
+    && move.to.col === move.from.col
+    && Math.abs(move.to.row - move.from.row) === 2
+    ? { row: (move.from.row + move.to.row) / 2, col: move.from.col }
+    : null;
 
   let nextCastlingRights = game.castlingRights;
   if (move.castle !== undefined) {
@@ -216,6 +242,9 @@ export function updateGame(game: GameState, move: Move): GameState {
 
   const boardWithPiece = placePiece(game.board, move.to, BOARD_SIZE, piece);
   let nextBoard = removePiece(boardWithPiece, move.from, BOARD_SIZE);
+  if (enPassantCaptureSquare) {
+    nextBoard = removePiece(nextBoard, enPassantCaptureSquare, BOARD_SIZE);
+  }
   if (move.castle !== undefined) {
     const homeRow = piece.color === 'white' ? 0 : BOARD_SIZE - 1;
     const rookFrom = { row: homeRow, col: move.castle === 'kingSide' ? 7 : 0 };
@@ -233,5 +262,6 @@ export function updateGame(game: GameState, move: Move): GameState {
     activeColor: piece.color === 'white' ? 'black' : 'white',
     history: [...game.history, move],
     castlingRights: nextCastlingRights,
+    enPassantTarget,
   }
 }

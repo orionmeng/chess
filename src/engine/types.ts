@@ -46,4 +46,5 @@ export type GameState = {
   board: Array<Piece | null>;
   history: Move[];
   castlingRights: CastlingRights;
+  enPassantTarget: Square | null;
 };

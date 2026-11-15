@@ -238,6 +238,23 @@ export function getPawnMoves(game: GameState, from: Square): Square[] {
     }
   }
 
+  const enPassantTarget = game.enPassantTarget;
+  const direction = piece.color === 'white' ? 1 : -1;
+  if (enPassantTarget
+    && isOnBoard(enPassantTarget)
+    && enPassantTarget.row === from.row + direction
+    && Math.abs(enPassantTarget.col - from.col) === 1
+    && !getPieceAt(game.board, enPassantTarget, BOARD_SIZE)) {
+    const adjacentPawn = getPieceAt(
+      game.board,
+      { row: from.row, col: enPassantTarget.col },
+      BOARD_SIZE,
+    );
+    if (adjacentPawn?.type === 'pawn' && adjacentPawn.color !== piece.color) {
+      moves.push(enPassantTarget);
+    }
+  }
+
   return moves;
 }
 
