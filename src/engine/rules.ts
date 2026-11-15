@@ -108,7 +108,7 @@ function getCastlingCandidates(
 }
 
 // Returns candidate destinations that neither capture a king nor leave the moving player's king in check.
-// Returns [] for an empty square or inactive piece; en passant is not yet supported.
+// Returns [] for an empty square or inactive piece.
 // Promotion destinations are returned once; the caller must choose the promotion piece.
 export function getLegalMoves(game: GameState, square: Square): Square[] {
   const piece = getPieceAt(game.board, square, BOARD_SIZE);
@@ -209,4 +209,26 @@ export function isInCheck(game: GameState, color: Color): boolean {
     throw new Error('King not found on the board');
   }
   return isSquareAttacked(game, kingSquare, color === 'white' ? 'black' : 'white');
+}
+
+function hasLegalMove(game: GameState): boolean {
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const square = { row, col };
+      const piece = getPieceAt(game.board, square, BOARD_SIZE);
+      if (piece?.color === game.activeColor && getLegalMoves(game, square).length > 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// These functions classify the player whose turn it is, and throw if their king is missing.
+export function isCheckmate(game: GameState): boolean {
+  return isInCheck(game, game.activeColor) && !hasLegalMove(game);
+}
+
+export function isStalemate(game: GameState): boolean {
+  return !isInCheck(game, game.activeColor) && !hasLegalMove(game);
 }
