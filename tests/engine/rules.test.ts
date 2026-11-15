@@ -15,12 +15,13 @@ function createGame(
     blackKingSide: false,
     blackQueenSide: false,
   },
+  enPassantTarget: Square | null = null,
 ): GameState {
   let board = createEmptyBoard();
   for (const [square, piece] of entries) {
     board = placePiece(board, square, BOARD_SIZE, piece);
   }
-  return { activeColor, board, history: [], castlingRights };
+  return { activeColor, board, history: [], castlingRights, enPassantTarget };
 }
 
 function expectMoves(actual: Square[], expected: Square[]): void {
@@ -162,6 +163,19 @@ describe('getLegalMoves', () => {
     ], color, rights);
 
     expect(getLegalMoves(game, king)).toContainEqual(destination);
+  });
+
+  it('rejects an en passant capture that exposes its king to a rook', () => {
+    const from = { row: 4, col: 3 };
+    const game = createGame([
+      [{ row: 4, col: 0 }, { type: 'king', color: 'white' }],
+      [from, { type: 'pawn', color: 'white' }],
+      [{ row: 4, col: 4 }, { type: 'pawn', color: 'black' }],
+      [{ row: 4, col: 7 }, { type: 'rook', color: 'black' }],
+      [{ row: 7, col: 7 }, { type: 'king', color: 'black' }],
+    ], 'white', undefined, { row: 5, col: 4 });
+
+    expect(getLegalMoves(game, from)).not.toContainEqual({ row: 5, col: 4 });
   });
 
   it.each([

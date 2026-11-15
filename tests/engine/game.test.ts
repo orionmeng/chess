@@ -44,6 +44,61 @@ describe('createInitialGame', () => {
 				color: 'white',
 				type: 'pawn',
 			});
+			expect(nextGame.enPassantTarget).toEqual({ row: 2, col: 4 });
+		});
+
+		it.each(['white', 'black'] as const)(
+			'applies an en passant capture after a %s pawn advances two squares',
+			(doubleStepColor) => {
+				const capturerColor = doubleStepColor === 'white' ? 'black' : 'white';
+				const from = { row: doubleStepColor === 'white' ? 1 : 6, col: 3 };
+				const to = { row: doubleStepColor === 'white' ? 3 : 4, col: 3 };
+				const capturerFrom = { row: to.row, col: 2 };
+				const captureTo = { row: to.row + (capturerColor === 'white' ? 1 : -1), col: 3 };
+				let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, {
+					color: doubleStepColor, type: 'pawn',
+				});
+				board = placePiece(board, capturerFrom, BOARD_SIZE, {
+					color: capturerColor, type: 'pawn',
+				});
+				const game = {
+					activeColor: doubleStepColor,
+					board,
+					history: [],
+					castlingRights: NO_CASTLING_RIGHTS,
+					enPassantTarget: null,
+				};
+				const afterDoubleStep = updateGame(game, { from, to });
+				const capture = { from: capturerFrom, to: captureTo };
+
+				const afterCapture = updateGame(afterDoubleStep, capture);
+
+				expect(afterDoubleStep.enPassantTarget).toEqual({
+					row: (from.row + to.row) / 2,
+					col: from.col,
+				});
+				expect(getPieceAt(afterCapture.board, to, BOARD_SIZE)).toBeNull();
+				expect(getPieceAt(afterCapture.board, capturerFrom, BOARD_SIZE)).toBeNull();
+				expect(getPieceAt(afterCapture.board, captureTo, BOARD_SIZE)).toEqual({
+					color: capturerColor, type: 'pawn',
+				});
+				expect(afterCapture.enPassantTarget).toBeNull();
+			},
+		);
+
+		it('clears the en passant target after any other move', () => {
+			const game = createInitialGame();
+			const afterDoubleStep = updateGame(game, {
+				from: { row: 1, col: 4 },
+				to: { row: 3, col: 4 },
+			});
+
+			const afterOtherMove = updateGame(afterDoubleStep, {
+				from: { row: 6, col: 0 },
+				to: { row: 5, col: 0 },
+			});
+
+			expect(afterOtherMove.enPassantTarget).toBeNull();
 		});
 
 		it('replaces an opposing piece when capturing', () => {
@@ -53,7 +108,7 @@ describe('createInitialGame', () => {
 			const to = { row: 4, col: 4 };
 			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, whitePawn);
 			board = placePiece(board, to, BOARD_SIZE, blackPawn);
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 
 			const nextGame = updateGame(game, { from, to });
 
@@ -159,7 +214,7 @@ describe('createInitialGame', () => {
 				const to = { row: color === 'white' ? 7 : 0, col: 3 };
 				const pawn = { color, type: 'pawn' as const };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, pawn);
-				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 				const move = { from, to, promotion };
 
 				const nextGame = updateGame(game, move);
@@ -181,7 +236,7 @@ describe('createInitialGame', () => {
 			board = placePiece(board, to, BOARD_SIZE, {
 				color: color === 'white' ? 'black' : 'white', type: 'rook',
 			});
-			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 
 			const nextGame = updateGame(game, { from, to, promotion: 'knight' });
 
@@ -194,7 +249,7 @@ describe('createInitialGame', () => {
 			const from = { row: color === 'white' ? 6 : 1, col: 3 };
 			const to = { row: color === 'white' ? 7 : 0, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 
 			expect(() => updateGame(game, { from, to })).toThrow('Promotion piece must be specified');
 			expect(getPieceAt(game.board, from, BOARD_SIZE)).toEqual({ color, type: 'pawn' });
@@ -209,7 +264,7 @@ describe('createInitialGame', () => {
 				const from = { row: fromRow, col: 3 };
 				const to = { row: toRow, col: 3 };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 
 				expect(() => updateGame(game, { from, to, promotion: 'queen' }))
 					.toThrow('Promotion can only occur on the last rank for the pawn color');
@@ -219,7 +274,7 @@ describe('createInitialGame', () => {
 		it('rejects a promotion choice for a non-pawn', () => {
 			const from = { row: 3, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'rook' });
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 
 			expect(() => updateGame(game, { from, to: { row: 3, col: 4 }, promotion: 'queen' }))
 				.toThrow('Only pawns can be promoted');
@@ -242,7 +297,7 @@ describe('createInitialGame', () => {
 				blackKingSide: true,
 				blackQueenSide: true,
 			};
-			const game = { activeColor: color, board, history: [], castlingRights: rights };
+			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null };
 			const move = { from: kingFrom, to: kingTo, castle };
 
 			const nextGame = updateGame(game, move);
@@ -270,6 +325,7 @@ describe('createInitialGame', () => {
 					whiteKingSide: true, whiteQueenSide: true,
 					blackKingSide: true, blackQueenSide: true,
 				},
+				enPassantTarget: null,
 			};
 
 			const nextGame = updateGame(game, { from, to: { row: 1, col: 4 } });
@@ -295,7 +351,7 @@ describe('createInitialGame', () => {
 				blackKingSide: true,
 				blackQueenSide: true,
 			};
-			const game = { activeColor: color, board, history: [], castlingRights: rights };
+			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null };
 
 			const nextGame = updateGame(game, { from, to: { row: row === 0 ? 1 : 6, col } });
 
@@ -316,6 +372,7 @@ describe('createInitialGame', () => {
 					whiteKingSide: true, whiteQueenSide: true,
 					blackKingSide: true, blackQueenSide: true,
 				},
+				enPassantTarget: null,
 			};
 
 			const nextGame = updateGame(game, { from, to });
@@ -328,7 +385,7 @@ describe('createInitialGame', () => {
 		it('rejects an invalid promotion choice at runtime', () => {
 			const from = { row: 6, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'pawn' });
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
 			const move = { from, to: { row: 7, col: 3 }, promotion: 'king' as const };
 
 			// @ts-expect-error Invalid runtime input must still be rejected.

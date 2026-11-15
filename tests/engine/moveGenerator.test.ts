@@ -22,7 +22,7 @@ function piece(type: Piece['type'], color: Color = 'white'): Piece {
   return { type, color };
 }
 
-function createGame(entries: Array<[Square, Piece]> = []): GameState {
+function createGame(entries: Array<[Square, Piece]> = [], enPassantTarget: Square | null = null): GameState {
   let board = createEmptyBoard();
   for (const [position, occupant] of entries) {
     board = placePiece(board, position, BOARD_SIZE, occupant);
@@ -38,6 +38,7 @@ function createGame(entries: Array<[Square, Piece]> = []): GameState {
       blackKingSide: false,
       blackQueenSide: false,
     },
+    enPassantTarget,
   };
 }
 
@@ -353,6 +354,43 @@ describe('getPawnMoves', () => {
     ]);
 
     expectMoves(getPawnMoves(game, square(3, 3)), [square(4, 3)]);
+  });
+
+  it.each([
+    ['white', square(4, 3), square(5, 4), square(4, 4), 'black'],
+    ['black', square(3, 3), square(2, 4), square(3, 4), 'white'],
+  ] as const)(
+    'allows a %s pawn to capture en passant when the target and adjacent pawn are valid',
+    (color, from, target, capturedPawnSquare, opposingColor) => {
+      const game = createGame([
+        [from, piece('pawn', color)],
+        [capturedPawnSquare, piece('pawn', opposingColor)],
+      ], target);
+
+      expectMoves(getPawnMoves(game, from), [
+        square(from.row + (color === 'white' ? 1 : -1), from.col),
+        target,
+      ]);
+    },
+  );
+
+  it('does not allow en passant without an opposing pawn adjacent to the target', () => {
+    const game = createGame([
+      [square(4, 3), piece('pawn', 'white')],
+      [square(4, 4), piece('rook', 'black')],
+    ], square(5, 4));
+
+    expectMoves(getPawnMoves(game, square(4, 3)), [square(5, 3)]);
+  });
+
+  it('does not allow en passant when its target square is occupied', () => {
+    const game = createGame([
+      [square(4, 3), piece('pawn', 'white')],
+      [square(4, 4), piece('pawn', 'black')],
+      [square(5, 4), piece('knight', 'white')],
+    ], square(5, 4));
+
+    expectMoves(getPawnMoves(game, square(4, 3)), [square(5, 3)]);
   });
 
   it('does not include off-board forward moves for pawns on their last rank', () => {
