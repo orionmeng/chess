@@ -131,6 +131,42 @@ describe('isSquareAttacked', () => {
 });
 
 describe('getLegalMoves', () => {
+  it.each(['white', 'black'] as const)(
+    'returns forward and capture promotion destinations for %s without choosing a piece',
+    (color) => {
+      const from = { row: color === 'white' ? 6 : 1, col: 3 };
+      const destinationRow = color === 'white' ? 7 : 0;
+      const otherColor = color === 'white' ? 'black' : 'white';
+      const game = createGame([
+        [{ row: color === 'white' ? 0 : 7, col: 0 }, { type: 'king', color }],
+        [{ row: color === 'white' ? 7 : 0, col: 7 }, { type: 'king', color: otherColor }],
+        [from, { type: 'pawn', color }],
+        [{ row: destinationRow, col: 4 }, { type: 'rook', color: otherColor }],
+      ], color);
+      const boardBefore = [...game.board];
+
+      expectMoves(getLegalMoves(game, from), [
+        { row: destinationRow, col: 3 },
+        { row: destinationRow, col: 4 },
+      ]);
+      expect(game.board).toEqual(boardBefore);
+      expect(game.activeColor).toBe(color);
+      expect(game.history).toEqual([]);
+    },
+  );
+
+  it('filters a promotion move that exposes the moving king to check', () => {
+    const from = { row: 6, col: 1 };
+    const game = createGame([
+      [{ row: 6, col: 0 }, { type: 'king', color: 'white' }],
+      [from, { type: 'pawn', color: 'white' }],
+      [{ row: 6, col: 7 }, { type: 'rook', color: 'black' }],
+      [{ row: 0, col: 7 }, { type: 'king', color: 'black' }],
+    ]);
+
+    expectMoves(getLegalMoves(game, from), []);
+  });
+
   const rookMoves: Square[] = [
     { row: 0, col: 3 }, { row: 1, col: 3 }, { row: 2, col: 3 },
     { row: 4, col: 3 }, { row: 5, col: 3 }, { row: 6, col: 3 }, { row: 7, col: 3 },
