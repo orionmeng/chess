@@ -39,6 +39,8 @@ function createGame(entries: Array<[Square, Piece]> = [], enPassantTarget: Squar
       blackQueenSide: false,
     },
     enPassantTarget,
+    positionHistory: [],
+    halfmoveClock: 0,
   };
 }
 

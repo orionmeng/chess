@@ -27,6 +27,49 @@ describe('createInitialGame', () => {
 	});
 
 	describe('updateGame', () => {
+		it('increments the halfmove clock for a quiet move and preserves the previous position', () => {
+			const game = { ...createInitialGame(), halfmoveClock: 12 };
+			const move = { from: { row: 0, col: 6 }, to: { row: 2, col: 5 } };
+			const nextGame = updateGame(game, move);
+
+			expect(nextGame.halfmoveClock).toBe(13);
+			expect(nextGame.positionHistory).toEqual([{
+				board: game.board,
+				activeColor: game.activeColor,
+				castlingRights: game.castlingRights,
+				enPassantTarget: game.enPassantTarget,
+			}]);
+			expect(game.positionHistory).toEqual([]);
+			expect(game.halfmoveClock).toBe(12);
+		});
+
+		it.each(['pawn move', 'capture', 'promotion', 'en passant'] as const)(
+			'resets the halfmove clock after a %s',
+			(kind) => {
+				const from = kind === 'promotion' ? { row: 6, col: 3 }
+					: kind === 'en passant' ? { row: 4, col: 3 } : { row: 2, col: 3 };
+				const to = kind === 'promotion' ? { row: 7, col: 3 }
+					: kind === 'en passant' ? { row: 5, col: 4 } : { row: 3, col: 3 };
+				let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, {
+					color: 'white', type: kind === 'capture' ? 'rook' : 'pawn',
+				});
+				if (kind === 'capture' || kind === 'en passant') {
+					board = placePiece(board, kind === 'capture' ? to : { row: 4, col: 4 }, BOARD_SIZE, {
+						color: 'black', type: 'pawn',
+					});
+				}
+				const game = {
+					...createInitialGame(), board, halfmoveClock: 99,
+					enPassantTarget: kind === 'en passant' ? to : null,
+				};
+				const nextGame = updateGame(game, {
+					from, to, promotion: kind === 'promotion' ? 'queen' : undefined,
+				});
+
+				expect(nextGame.halfmoveClock).toBe(0);
+			},
+		);
+
 		it('moves a piece to an empty square and switches turns', () => {
 			const game = createInitialGame();
 			const move = { from: { row: 1, col: 4 }, to: { row: 3, col: 4 } };
@@ -67,6 +110,8 @@ describe('createInitialGame', () => {
 					history: [],
 					castlingRights: NO_CASTLING_RIGHTS,
 					enPassantTarget: null,
+					positionHistory: [],
+					halfmoveClock: 0,
 				};
 				const afterDoubleStep = updateGame(game, { from, to });
 				const capture = { from: capturerFrom, to: captureTo };
@@ -108,7 +153,7 @@ describe('createInitialGame', () => {
 			const to = { row: 4, col: 4 };
 			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, whitePawn);
 			board = placePiece(board, to, BOARD_SIZE, blackPawn);
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 
 			const nextGame = updateGame(game, { from, to });
 
@@ -214,7 +259,7 @@ describe('createInitialGame', () => {
 				const to = { row: color === 'white' ? 7 : 0, col: 3 };
 				const pawn = { color, type: 'pawn' as const };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, pawn);
-				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 				const move = { from, to, promotion };
 
 				const nextGame = updateGame(game, move);
@@ -236,7 +281,7 @@ describe('createInitialGame', () => {
 			board = placePiece(board, to, BOARD_SIZE, {
 				color: color === 'white' ? 'black' : 'white', type: 'rook',
 			});
-			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 
 			const nextGame = updateGame(game, { from, to, promotion: 'knight' });
 
@@ -249,7 +294,7 @@ describe('createInitialGame', () => {
 			const from = { row: color === 'white' ? 6 : 1, col: 3 };
 			const to = { row: color === 'white' ? 7 : 0, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 
 			expect(() => updateGame(game, { from, to })).toThrow('Promotion piece must be specified');
 			expect(getPieceAt(game.board, from, BOARD_SIZE)).toEqual({ color, type: 'pawn' });
@@ -264,7 +309,7 @@ describe('createInitialGame', () => {
 				const from = { row: fromRow, col: 3 };
 				const to = { row: toRow, col: 3 };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 
 				expect(() => updateGame(game, { from, to, promotion: 'queen' }))
 					.toThrow('Promotion can only occur on the last rank for the pawn color');
@@ -274,7 +319,7 @@ describe('createInitialGame', () => {
 		it('rejects a promotion choice for a non-pawn', () => {
 			const from = { row: 3, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'rook' });
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 
 			expect(() => updateGame(game, { from, to: { row: 3, col: 4 }, promotion: 'queen' }))
 				.toThrow('Only pawns can be promoted');
@@ -297,7 +342,7 @@ describe('createInitialGame', () => {
 				blackKingSide: true,
 				blackQueenSide: true,
 			};
-			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null };
+			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 			const move = { from: kingFrom, to: kingTo, castle };
 
 			const nextGame = updateGame(game, move);
@@ -326,6 +371,8 @@ describe('createInitialGame', () => {
 					blackKingSide: true, blackQueenSide: true,
 				},
 				enPassantTarget: null,
+				positionHistory: [],
+				halfmoveClock: 0,
 			};
 
 			const nextGame = updateGame(game, { from, to: { row: 1, col: 4 } });
@@ -351,7 +398,7 @@ describe('createInitialGame', () => {
 				blackKingSide: true,
 				blackQueenSide: true,
 			};
-			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null };
+			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 
 			const nextGame = updateGame(game, { from, to: { row: row === 0 ? 1 : 6, col } });
 
@@ -373,6 +420,8 @@ describe('createInitialGame', () => {
 					blackKingSide: true, blackQueenSide: true,
 				},
 				enPassantTarget: null,
+				positionHistory: [],
+				halfmoveClock: 0,
 			};
 
 			const nextGame = updateGame(game, { from, to });
@@ -385,7 +434,7 @@ describe('createInitialGame', () => {
 		it('rejects an invalid promotion choice at runtime', () => {
 			const from = { row: 6, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'pawn' });
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
 			const move = { from, to: { row: 7, col: 3 }, promotion: 'king' as const };
 
 			// @ts-expect-error Invalid runtime input must still be rejected.

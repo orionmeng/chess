@@ -2,7 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyBoard } from '../../src/engine/board';
 import { createInitialGame, updateGame } from '../../src/engine/game';
 import { placePiece } from '../../src/engine/pieces';
-import { getLegalMoves, isCheckmate, isInCheck, isSquareAttacked, isStalemate } from '../../src/engine/rules';
+import {
+  canClaimFiftyMoveRule,
+  canClaimThreefoldRepetition,
+  getLegalMoves,
+  isCheckmate,
+  isFivefoldRepetition,
+  isInCheck,
+  isSeventyFiveMoveRule,
+  isSquareAttacked,
+  isStalemate,
+} from '../../src/engine/rules';
 import type { Color, GameState, Piece, Square } from '../../src/engine/types';
 
 const BOARD_SIZE = 8;
@@ -22,7 +32,10 @@ function createGame(
   for (const [square, piece] of entries) {
     board = placePiece(board, square, BOARD_SIZE, piece);
   }
-  return { activeColor, board, history: [], castlingRights, enPassantTarget };
+  return {
+    activeColor, board, history: [], castlingRights, enPassantTarget,
+    positionHistory: [], halfmoveClock: 0,
+  };
 }
 
 function expectMoves(actual: Square[], expected: Square[]): void {
@@ -112,6 +125,234 @@ describe('game-ending states', () => {
 
     expect(() => isCheckmate(game)).toThrow('King not found on the board');
     expect(() => isStalemate(game)).toThrow('King not found on the board');
+  });
+});
+
+describe('draw claims', () => {
+  const knightCycle = [
+    { from: { row: 0, col: 6 }, to: { row: 2, col: 5 } },
+    { from: { row: 7, col: 6 }, to: { row: 5, col: 5 } },
+    { from: { row: 2, col: 5 }, to: { row: 0, col: 6 } },
+    { from: { row: 5, col: 5 }, to: { row: 7, col: 6 } },
+  ];
+
+  it('counts the initial position and supports a claim before an intended legal move', () => {
+    let game = createInitialGame();
+    expect(canClaimThreefoldRepetition(game)).toBe(false);
+    for (const move of [...knightCycle, ...knightCycle.slice(0, 3)]) {
+      expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+      game = updateGame(game, move);
+    }
+
+    expect(canClaimThreefoldRepetition(game)).toBe(false);
+    expect(canClaimThreefoldRepetition(game, knightCycle[3])).toBe(true);
+    expect(game.history).toHaveLength(7);
+    game = updateGame(game, knightCycle[3]);
+    expect(canClaimThreefoldRepetition(game)).toBe(true);
+  });
+
+  it('distinguishes castling rights, side to move, and piece positions', () => {
+    const game = createInitialGame();
+    const withoutRight = {
+      ...game,
+      castlingRights: { ...game.castlingRights, whiteKingSide: false },
+    };
+    const blackToMove = { ...game, activeColor: 'black' as const };
+    const differentBoard = {
+      ...game,
+      board: placePiece(game.board, { row: 2, col: 4 }, BOARD_SIZE, { type: 'pawn', color: 'white' }),
+    };
+    expect(canClaimThreefoldRepetition({
+      ...game, positionHistory: [withoutRight, blackToMove, differentBoard, game],
+    })).toBe(false);
+    expect(canClaimThreefoldRepetition({ ...game, positionHistory: [game, game] })).toBe(true);
+  });
+
+  it('does not count the initial position after a rook loses castling rights', () => {
+    let game = createGame([
+      [{ row: 0, col: 4 }, { type: 'king', color: 'white' }],
+      [{ row: 0, col: 7 }, { type: 'rook', color: 'white' }],
+      [{ row: 7, col: 4 }, { type: 'king', color: 'black' }],
+      [{ row: 7, col: 6 }, { type: 'knight', color: 'black' }],
+    ], 'white', {
+      whiteKingSide: true, whiteQueenSide: false,
+      blackKingSide: false, blackQueenSide: false,
+    });
+    const cycle = [
+      { from: { row: 0, col: 7 }, to: { row: 1, col: 7 } },
+      knightCycle[1],
+      { from: { row: 1, col: 7 }, to: { row: 0, col: 7 } },
+      knightCycle[3],
+    ];
+    for (let i = 0; i < 3; i++) {
+      for (const move of cycle) {
+        expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+        game = updateGame(game, move);
+      }
+      expect(canClaimThreefoldRepetition(game)).toBe(i === 2);
+    }
+  });
+
+  it('distinguishes positions when a legal en passant capture is available', () => {
+    const game = createGame([
+      [{ row: 0, col: 0 }, { type: 'king', color: 'white' }],
+      [{ row: 7, col: 7 }, { type: 'king', color: 'black' }],
+      [{ row: 4, col: 3 }, { type: 'pawn', color: 'white' }],
+      [{ row: 4, col: 4 }, { type: 'pawn', color: 'black' }],
+    ], 'white', undefined, { row: 5, col: 4 });
+    const withoutTarget = { ...game, enPassantTarget: null };
+    expect(canClaimThreefoldRepetition({ ...game, positionHistory: [withoutTarget, withoutTarget] }))
+      .toBe(false);
+    expect(canClaimThreefoldRepetition({ ...game, positionHistory: [game, game] })).toBe(true);
+  });
+
+  it('ignores an en passant target when the capture is illegal or unavailable', () => {
+    const game = createGame([
+      [{ row: 4, col: 0 }, { type: 'king', color: 'white' }],
+      [{ row: 4, col: 3 }, { type: 'pawn', color: 'white' }],
+      [{ row: 4, col: 4 }, { type: 'pawn', color: 'black' }],
+      [{ row: 4, col: 7 }, { type: 'rook', color: 'black' }],
+      [{ row: 7, col: 7 }, { type: 'king', color: 'black' }],
+    ], 'white', undefined, { row: 5, col: 4 });
+    const withoutTarget = { ...game, enPassantTarget: null };
+    expect(canClaimThreefoldRepetition({ ...game, positionHistory: [withoutTarget, withoutTarget] }))
+      .toBe(true);
+
+    const noAdjacentPawn = createInitialGame();
+    expect(canClaimThreefoldRepetition({
+      ...noAdjacentPawn,
+      enPassantTarget: { row: 5, col: 4 },
+      positionHistory: [noAdjacentPawn, noAdjacentPawn],
+    })).toBe(true);
+  });
+
+  it('requires 100 halfmoves and supports a claim before the 100th', () => {
+    const game = { ...createInitialGame(), halfmoveClock: 99 };
+    expect(canClaimFiftyMoveRule(game)).toBe(false);
+    expect(canClaimFiftyMoveRule(game, knightCycle[0])).toBe(true);
+    expect(game.halfmoveClock).toBe(99);
+    expect(canClaimFiftyMoveRule({ ...game, halfmoveClock: 100 })).toBe(true);
+    expect(canClaimFiftyMoveRule(game, {
+      from: { row: 1, col: 4 }, to: { row: 2, col: 4 },
+    })).toBe(false);
+  });
+
+  it('keeps counting quiet moves even if a caller continues after an automatic draw', () => {
+    let game = createInitialGame();
+    for (let i = 0; i < 99; i++) {
+      const move = knightCycle[i % knightCycle.length];
+      expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+      game = updateGame(game, move);
+    }
+    expect(game.halfmoveClock).toBe(99);
+    expect(canClaimFiftyMoveRule(game)).toBe(false);
+    expect(canClaimFiftyMoveRule(game, knightCycle[3])).toBe(false);
+    game = updateGame(game, knightCycle[3]);
+    expect(game.halfmoveClock).toBe(100);
+    expect(canClaimFiftyMoveRule(game)).toBe(false);
+    expect(isFivefoldRepetition(game)).toBe(true);
+  });
+
+  it('ends automatically on the fifth occurrence, not the fourth', () => {
+    let game = createInitialGame();
+    for (let cycle = 1; cycle <= 4; cycle++) {
+      for (const move of knightCycle) {
+        expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+        game = updateGame(game, move);
+      }
+      expect(isFivefoldRepetition(game)).toBe(cycle === 4);
+    }
+    expect(canClaimThreefoldRepetition(game)).toBe(false);
+    expect(canClaimFiftyMoveRule(game)).toBe(false);
+  });
+
+  it('uses castling rights and legal en passant captures for fivefold repetition', () => {
+    const game = createGame([
+      [{ row: 0, col: 0 }, { type: 'king', color: 'white' }],
+      [{ row: 7, col: 7 }, { type: 'king', color: 'black' }],
+      [{ row: 4, col: 3 }, { type: 'pawn', color: 'white' }],
+      [{ row: 4, col: 4 }, { type: 'pawn', color: 'black' }],
+    ], 'white', undefined, { row: 5, col: 4 });
+    const noTarget = { ...game, enPassantTarget: null };
+    const differentRights = {
+      ...game, castlingRights: { ...game.castlingRights, whiteKingSide: true },
+    };
+    expect(isFivefoldRepetition({
+      ...game, positionHistory: [game, game, game, noTarget, differentRights],
+    })).toBe(false);
+    expect(isFivefoldRepetition({
+      ...game, positionHistory: [game, game, game, game],
+    })).toBe(true);
+  });
+
+  it('applies the seventy-five-move rule after 150 halfmoves and suppresses claims', () => {
+    const game = { ...createInitialGame(), halfmoveClock: 149 };
+    expect(isSeventyFiveMoveRule(game)).toBe(false);
+    const next = updateGame(game, knightCycle[0]);
+    expect(next.halfmoveClock).toBe(150);
+    expect(isSeventyFiveMoveRule(next)).toBe(true);
+    expect(canClaimFiftyMoveRule(next)).toBe(false);
+    expect(canClaimThreefoldRepetition(next)).toBe(false);
+    expect(isSeventyFiveMoveRule({ ...next, halfmoveClock: 151 })).toBe(true);
+  });
+
+  it.each(['pawn move', 'capture'] as const)(
+    'does not trigger the seventy-five-move rule when the 150th halfmove is a %s',
+    (kind) => {
+      const entries: Array<[Square, Piece]> = [
+        [{ row: 0, col: 4 }, { type: 'king', color: 'white' }],
+        [{ row: 7, col: 4 }, { type: 'king', color: 'black' }],
+        [{ row: 1, col: 0 }, { type: kind === 'pawn move' ? 'pawn' : 'rook', color: 'white' }],
+      ];
+      if (kind === 'capture') {
+        entries.push([{ row: 2, col: 0 }, { type: 'knight', color: 'black' }]);
+      }
+      const game = {
+        ...createGame(entries),
+        halfmoveClock: 149,
+      };
+      const move = { from: { row: 1, col: 0 }, to: { row: 2, col: 0 } };
+      expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+      const next = updateGame(game, move);
+      expect(next.halfmoveClock).toBe(0);
+      expect(isSeventyFiveMoveRule(next)).toBe(false);
+    },
+  );
+
+  it('lets checkmate on the 150th halfmove take precedence', () => {
+    const game = {
+      ...createGame([
+        [{ row: 5, col: 2 }, { type: 'king', color: 'white' }],
+        [{ row: 5, col: 1 }, { type: 'queen', color: 'white' }],
+        [{ row: 7, col: 0 }, { type: 'king', color: 'black' }],
+      ]),
+      halfmoveClock: 149,
+    };
+    const move = { from: { row: 5, col: 1 }, to: { row: 6, col: 1 } };
+    expect(getLegalMoves(game, move.from)).toContainEqual(move.to);
+    const next = updateGame(game, move);
+
+    expect(next.halfmoveClock).toBe(150);
+    expect(isCheckmate(next)).toBe(true);
+    expect(isSeventyFiveMoveRule(next)).toBe(false);
+  });
+
+  it('rejects illegal intended moves and does not claim after checkmate or stalemate', () => {
+    const game = createInitialGame();
+    const illegal = { from: { row: 0, col: 0 }, to: { row: 3, col: 0 } };
+    expect(() => canClaimThreefoldRepetition(game, illegal)).toThrow('Intended move must be legal');
+    expect(() => canClaimFiftyMoveRule(game, illegal)).toThrow('Intended move must be legal');
+
+    for (const queenCol of [1, 2]) {
+      const ended = createGame([
+        [{ row: 0, col: 0 }, { type: 'king', color: 'white' }],
+        [{ row: 1, col: queenCol }, { type: 'queen', color: 'black' }],
+        [{ row: 2, col: queenCol === 1 ? 2 : 1 }, { type: 'king', color: 'black' }],
+      ]);
+      const claimable = { ...ended, halfmoveClock: 100, positionHistory: [ended, ended] };
+      expect(canClaimFiftyMoveRule(claimable)).toBe(false);
+      expect(canClaimThreefoldRepetition(claimable)).toBe(false);
+    }
   });
 });
 
