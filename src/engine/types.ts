@@ -41,10 +41,14 @@ export type CastlingRights = {
   blackKingSide: boolean;
   blackQueenSide: boolean;
 };
-export type GameState = {
+export type Position = {
   activeColor: Color;
   board: Array<Piece | null>;
-  history: Move[];
   castlingRights: CastlingRights;
   enPassantTarget: Square | null;
+};
+export type GameState = Position & {
+  history: Move[];
+  positionHistory: Position[];
+  halfmoveClock: number;
 };

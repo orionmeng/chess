@@ -10,7 +10,7 @@ import {
   getPawnAttacks,
 } from './moveGenerator';
 import { getPieceAt, removePiece } from './pieces';
-import type { CastleSide, Color, GameState, Piece, Square } from './types';
+import type { CastleSide, Color, GameState, Move, Piece, Position, Square } from './types';
 
 const BOARD_SIZE = 8;
 
@@ -231,4 +231,88 @@ export function isCheckmate(game: GameState): boolean {
 
 export function isStalemate(game: GameState): boolean {
   return !isInCheck(game, game.activeColor) && !hasLegalMove(game);
+}
+
+function legalEnPassantTarget(position: Position): Square | null {
+  const target = position.enPassantTarget;
+  if (!target || getPieceAt(position.board, target, BOARD_SIZE)) {
+    return null;
+  }
+
+  const row = target.row + (position.activeColor === 'white' ? -1 : 1);
+  const game: GameState = { ...position, history: [], positionHistory: [], halfmoveClock: 0 };
+  for (const col of [target.col - 1, target.col + 1]) {
+    const from = { row, col };
+    const piece = getPieceAt(position.board, from, BOARD_SIZE);
+    if (piece?.type === 'pawn' && piece.color === position.activeColor
+      && getLegalMoves(game, from).some(move => move.row === target.row && move.col === target.col)) {
+      return target;
+    }
+  }
+  return null;
+}
+
+function samePosition(first: Position, second: Position): boolean {
+  if (first.activeColor !== second.activeColor
+    || first.board.length !== second.board.length
+    || first.board.some((piece, index) =>
+      piece?.type !== second.board[index]?.type || piece?.color !== second.board[index]?.color)
+    || first.castlingRights.whiteKingSide !== second.castlingRights.whiteKingSide
+    || first.castlingRights.whiteQueenSide !== second.castlingRights.whiteQueenSide
+    || first.castlingRights.blackKingSide !== second.castlingRights.blackKingSide
+    || first.castlingRights.blackQueenSide !== second.castlingRights.blackQueenSide) {
+    return false;
+  }
+
+  const firstTarget = legalEnPassantTarget(first);
+  const secondTarget = legalEnPassantTarget(second);
+  return firstTarget?.row === secondTarget?.row && firstTarget?.col === secondTarget?.col;
+}
+
+function hasRepeatedPosition(game: GameState, requiredOccurrences: number): boolean {
+  let occurrences = 1;
+  for (const previous of game.positionHistory) {
+    if (samePosition(game, previous) && ++occurrences >= requiredOccurrences) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Automatic draws apply to the current position; checkmate takes precedence.
+export function isFivefoldRepetition(game: GameState): boolean {
+  return hasRepeatedPosition(game, 5) && !isCheckmate(game);
+}
+
+export function isSeventyFiveMoveRule(game: GameState): boolean {
+  return game.halfmoveClock >= 150 && !isCheckmate(game);
+}
+
+function positionForClaim(game: GameState, intendedMove?: Move): GameState {
+  if (!intendedMove) {
+    return game;
+  }
+  if (!getLegalMoves(game, intendedMove.from)
+    .some(to => to.row === intendedMove.to.row && to.col === intendedMove.to.col)) {
+    throw new Error('Intended move must be legal');
+  }
+  return updateGame(game, intendedMove);
+}
+
+// An intended move is checked without changing the game; invalid moves throw.
+// Neither rule automatically ends the game: the player must claim the draw.
+export function canClaimThreefoldRepetition(game: GameState, intendedMove?: Move): boolean {
+  if (isCheckmate(game) || isStalemate(game)
+    || isFivefoldRepetition(game) || isSeventyFiveMoveRule(game)) {
+    return false;
+  }
+  return hasRepeatedPosition(positionForClaim(game, intendedMove), 3);
+}
+
+export function canClaimFiftyMoveRule(game: GameState, intendedMove?: Move): boolean {
+  if (isCheckmate(game) || isStalemate(game)
+    || isFivefoldRepetition(game) || isSeventyFiveMoveRule(game)) {
+    return false;
+  }
+  return positionForClaim(game, intendedMove).halfmoveClock >= 100;
 }

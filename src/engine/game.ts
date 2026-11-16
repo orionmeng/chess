@@ -124,6 +124,8 @@ export function createInitialGame(): GameState {
       blackQueenSide: true,
     },
     enPassantTarget: null,
+    positionHistory: [],
+    halfmoveClock: 0,
   };
 }
 
@@ -141,6 +143,7 @@ export function updateGame(game: GameState, move: Move): GameState {
     throw new Error('It is not the active player\'s turn');
   }
 
+  const isPawnMove = piece.type === 'pawn';
   const targetPiece = getPieceAt(game.board, move.to, BOARD_SIZE);
   if (targetPiece && targetPiece.color === piece.color) {
     throw new Error('Cannot capture a piece of the same color');
@@ -263,5 +266,12 @@ export function updateGame(game: GameState, move: Move): GameState {
     history: [...game.history, move],
     castlingRights: nextCastlingRights,
     enPassantTarget,
+    positionHistory: [...game.positionHistory, {
+      board: game.board,
+      activeColor: game.activeColor,
+      castlingRights: game.castlingRights,
+      enPassantTarget: game.enPassantTarget,
+    }],
+    halfmoveClock: isPawnMove || targetPiece || enPassantCaptureSquare ? 0 : game.halfmoveClock + 1,
   }
 }
