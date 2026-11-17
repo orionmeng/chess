@@ -33,6 +33,14 @@ npm run dev
 - `npm run preview` — preview the production build
 - `npm test` — run tests with Vitest
 
+## Perft tests
+
+`npm test -- --run tests/engine/perft.test.ts` checks legal-move sequence counts
+against [published reference positions](https://www.chessprogramming.org/Perft_Results),
+including castling, en passant, and promotions. Depth counts individual moves; depth
+zero counts the current position. Perft ignores draw claims and automatic draws.
+On a mismatch, the test reports counts for each first move to help locate the error.
+
 ## Draws
 
 The engine exposes `canClaimThreefoldRepetition` and `canClaimFiftyMoveRule` in `rules.ts`.
