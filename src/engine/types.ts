@@ -46,9 +46,10 @@ export type Position = {
   board: Array<Piece | null>;
   castlingRights: CastlingRights;
   enPassantTarget: Square | null;
+  halfmoveClock: number;
+  fullmoveNumber: number;
 };
 export type GameState = Position & {
   history: Move[];
   positionHistory: Position[];
-  halfmoveClock: number;
 };

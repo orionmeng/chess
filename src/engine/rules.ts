@@ -240,7 +240,7 @@ function legalEnPassantTarget(position: Position): Square | null {
   }
 
   const row = target.row + (position.activeColor === 'white' ? -1 : 1);
-  const game: GameState = { ...position, history: [], positionHistory: [], halfmoveClock: 0 };
+  const game: GameState = { ...position, history: [], positionHistory: [] };
   for (const col of [target.col - 1, target.col + 1]) {
     const from = { row, col };
     const piece = getPieceAt(position.board, from, BOARD_SIZE);

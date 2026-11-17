@@ -126,6 +126,7 @@ export function createInitialGame(): GameState {
     enPassantTarget: null,
     positionHistory: [],
     halfmoveClock: 0,
+    fullmoveNumber: 1,
   };
 }
 
@@ -271,7 +272,23 @@ export function updateGame(game: GameState, move: Move): GameState {
       activeColor: game.activeColor,
       castlingRights: game.castlingRights,
       enPassantTarget: game.enPassantTarget,
+      halfmoveClock: game.halfmoveClock,
+      fullmoveNumber: game.fullmoveNumber,
     }],
     halfmoveClock: isPawnMove || targetPiece || enPassantCaptureSquare ? 0 : game.halfmoveClock + 1,
+    fullmoveNumber: game.fullmoveNumber + (piece.color === 'black' ? 1 : 0),
   }
+}
+
+// Undo only moves made since the game was created or imported.
+export function undoMove(game: GameState): GameState {
+  const previous = game.positionHistory[game.positionHistory.length - 1];
+  if (!previous || game.history.length !== game.positionHistory.length) {
+    throw new Error('No move available to undo');
+  }
+  return {
+    ...previous,
+    history: game.history.slice(0, -1),
+    positionHistory: game.positionHistory.slice(0, -1),
+  };
 }
