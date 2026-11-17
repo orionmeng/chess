@@ -2,9 +2,10 @@ import { createEmptyBoard } from './board';
 import { createInitialGame, updateGame } from './game';
 import { getPieceAt } from './pieces';
 import {
-  getLegalMoves, isCheckmate, isFivefoldRepetition, isInCheck, isSeventyFiveMoveRule, isStalemate,
+  getAllLegalMoves, getLegalMoves, isCheckmate, isFivefoldRepetition, isInCheck,
+  isSeventyFiveMoveRule, isStalemate,
 } from './rules';
-import type { Color, GameState, Move, Piece, PieceType, PromotionPieceType, Square } from './types';
+import type { Color, GameState, Move, Piece, PieceType, Square } from './types';
 
 const FILES = 'abcdefgh';
 const PIECE_TYPES: Record<string, PieceType> = {
@@ -125,7 +126,6 @@ export function formatFen(game: GameState): string {
   ].join(' ');
 }
 
-const PROMOTIONS: PromotionPieceType[] = ['queen', 'rook', 'bishop', 'knight'];
 const RESULTS = ['1-0', '0-1', '1/2-1/2', '*'];
 export type PgnGame = { game: GameState; tags: Record<string, string> };
 
@@ -138,27 +138,6 @@ function validatePgnResult(game: GameState, result: string): void {
     && result !== '1/2-1/2') {
     throw new Error('PGN result contradicts an automatic draw');
   }
-}
-
-function legalMoves(game: GameState): Move[] {
-  const moves: Move[] = [];
-  for (let row = 0; row < 8; row++) {
-    for (let col = 0; col < 8; col++) {
-      const from = { row, col };
-      const piece = getPieceAt(game.board, from, 8);
-      if (!piece || piece.color !== game.activeColor) continue;
-      for (const to of getLegalMoves(game, from)) {
-        if (piece.type === 'pawn' && (to.row === 0 || to.row === 7)) {
-          for (const promotion of PROMOTIONS) moves.push({ from, to, promotion });
-        } else if (piece.type === 'king' && Math.abs(to.col - col) === 2) {
-          moves.push({ from, to, castle: to.col === 6 ? 'kingSide' : 'queenSide' });
-        } else {
-          moves.push({ from, to });
-        }
-      }
-    }
-  }
-  return moves;
 }
 
 function san(game: GameState, move: Move): string {
@@ -268,7 +247,7 @@ export function parsePgn(pgn: string): PgnGame {
       continue;
     }
     const normalized = token.replace(/[!?]+$/, '').replace(/^0-0-0/, 'O-O-O').replace(/^0-0/, 'O-O');
-    const candidates = legalMoves(game).filter(move => {
+    const candidates = getAllLegalMoves(game).filter(move => {
       const notation = san(game, move);
       return notation === normalized
         || (!/[+#]$/.test(normalized) && notation.replace(/[+#]$/, '') === normalized);
@@ -316,7 +295,7 @@ export function formatPgn(game: GameState, inputTags: Record<string, string> = {
   }
   const moves: string[] = [];
   for (const move of game.history) {
-    if (!legalMoves(current).some(candidate =>
+    if (!getAllLegalMoves(current).some(candidate =>
       candidate.from.row === move.from.row && candidate.from.col === move.from.col
       && candidate.to.row === move.to.row && candidate.to.col === move.to.col
       && candidate.promotion === move.promotion && candidate.castle === move.castle)) {

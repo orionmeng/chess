@@ -10,7 +10,9 @@ import {
   getPawnAttacks,
 } from './moveGenerator';
 import { getPieceAt, removePiece } from './pieces';
-import type { CastleSide, Color, GameState, Move, Piece, Position, Square } from './types';
+import type {
+  CastleSide, Color, GameState, Move, Piece, Position, PromotionPieceType, Square,
+} from './types';
 
 const BOARD_SIZE = 8;
 
@@ -136,6 +138,29 @@ export function getLegalMoves(game: GameState, square: Square): Square[] {
     });
     return !isInCheck(newGame, piece.color);
   }).map(candidate => candidate.to);
+}
+
+// Expand promotion destinations into four moves and attach castling metadata.
+export function getAllLegalMoves(game: GameState): Move[] {
+  const moves: Move[] = [];
+  const promotions: PromotionPieceType[] = ['queen', 'rook', 'bishop', 'knight'];
+  for (let row = 0; row < BOARD_SIZE; row++) {
+    for (let col = 0; col < BOARD_SIZE; col++) {
+      const from = { row, col };
+      const piece = getPieceAt(game.board, from, BOARD_SIZE);
+      if (!piece || piece.color !== game.activeColor) continue;
+      for (const to of getLegalMoves(game, from)) {
+        if (piece.type === 'pawn' && (to.row === 0 || to.row === BOARD_SIZE - 1)) {
+          for (const promotion of promotions) moves.push({ from, to, promotion });
+        } else if (piece.type === 'king' && Math.abs(to.col - col) === 2) {
+          moves.push({ from, to, castle: to.col === 6 ? 'kingSide' : 'queenSide' });
+        } else {
+          moves.push({ from, to });
+        }
+      }
+    }
+  }
+  return moves;
 }
 
 // Checks whether attackerColor attacks the square, regardless of occupancy or pins.
