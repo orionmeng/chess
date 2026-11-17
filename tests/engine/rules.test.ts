@@ -34,7 +34,7 @@ function createGame(
   }
   return {
     activeColor, board, history: [], castlingRights, enPassantTarget,
-    positionHistory: [], halfmoveClock: 0,
+    positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1,
   };
 }
 

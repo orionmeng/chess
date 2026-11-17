@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptyBoard } from '../../src/engine/board';
 import { getPieceAt, placePiece } from '../../src/engine/pieces';
-import { createInitialGame, updateGame } from '../../src/engine/game';
+import { createInitialGame, undoMove, updateGame } from '../../src/engine/game';
+import { parseFen } from '../../src/engine/notation';
+import { canClaimThreefoldRepetition, isSeventyFiveMoveRule } from '../../src/engine/rules';
 import type { Color, PromotionPieceType } from '../../src/engine/types';
 
 const BOARD_SIZE = 8;
@@ -20,6 +22,54 @@ function countPiecesByColor(
 }
 
 describe('createInitialGame', () => {
+	describe('undoMove', () => {
+		it('restores every state field across several moves without mutating earlier states', () => {
+			const initial = createInitialGame();
+			const first = updateGame(initial, { from: { row: 1, col: 4 }, to: { row: 3, col: 4 } });
+			const second = updateGame(first, { from: { row: 6, col: 3 }, to: { row: 4, col: 3 } });
+			const third = updateGame(second, { from: { row: 0, col: 6 }, to: { row: 2, col: 5 } });
+			expect(undoMove(third)).toEqual(second);
+			expect(undoMove(undoMove(third))).toEqual(first);
+			expect(undoMove(undoMove(undoMove(third)))).toEqual(initial);
+			expect(third.history).toHaveLength(3);
+			expect(() => undoMove(initial)).toThrow('No move available to undo');
+		});
+
+		it.each([
+			['castling', '4k3/8/8/8/8/8/8/4K2R w K - 12 20',
+				{ from: { row: 0, col: 4 }, to: { row: 0, col: 6 }, castle: 'kingSide' as const }],
+			['en passant', '4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 10',
+				{ from: { row: 4, col: 4 }, to: { row: 5, col: 3 } }],
+			['promotion', '4k3/P7/8/8/8/8/8/4K3 w - - 5 10',
+				{ from: { row: 6, col: 0 }, to: { row: 7, col: 0 }, promotion: 'knight' as const }],
+		])('restores a position after %s', (_name, fen, move) => {
+			const game = parseFen(fen);
+			expect(undoMove(updateGame(game, move))).toEqual(game);
+		});
+
+		it('restores repetition history and the seventy-five-move clock', () => {
+			let game = createInitialGame();
+			const cycle = [
+				{ from: { row: 0, col: 6 }, to: { row: 2, col: 5 } },
+				{ from: { row: 7, col: 6 }, to: { row: 5, col: 5 } },
+				{ from: { row: 2, col: 5 }, to: { row: 0, col: 6 } },
+				{ from: { row: 5, col: 5 }, to: { row: 7, col: 6 } },
+			];
+			for (const move of [...cycle, ...cycle]) game = updateGame(game, move);
+			expect(canClaimThreefoldRepetition(game)).toBe(true);
+			const previous = undoMove(game);
+			expect(canClaimThreefoldRepetition(previous)).toBe(false);
+			expect(canClaimThreefoldRepetition(previous, cycle[3])).toBe(true);
+			expect(updateGame(previous, cycle[3])).toEqual(game);
+
+			const almost = { ...createInitialGame(), halfmoveClock: 149 };
+			const drawn = updateGame(almost, cycle[0]);
+			expect(isSeventyFiveMoveRule(drawn)).toBe(true);
+			expect(undoMove(drawn)).toEqual(almost);
+			expect(isSeventyFiveMoveRule(undoMove(drawn))).toBe(false);
+		});
+	});
+
 	it('creates a board with 64 squares', () => {
 		const game = createInitialGame();
 
@@ -38,6 +88,8 @@ describe('createInitialGame', () => {
 				activeColor: game.activeColor,
 				castlingRights: game.castlingRights,
 				enPassantTarget: game.enPassantTarget,
+				halfmoveClock: game.halfmoveClock,
+				fullmoveNumber: game.fullmoveNumber,
 			}]);
 			expect(game.positionHistory).toEqual([]);
 			expect(game.halfmoveClock).toBe(12);
@@ -112,6 +164,7 @@ describe('createInitialGame', () => {
 					enPassantTarget: null,
 					positionHistory: [],
 					halfmoveClock: 0,
+					fullmoveNumber: 1,
 				};
 				const afterDoubleStep = updateGame(game, { from, to });
 				const capture = { from: capturerFrom, to: captureTo };
@@ -153,7 +206,7 @@ describe('createInitialGame', () => {
 			const to = { row: 4, col: 4 };
 			let board = placePiece(createEmptyBoard(), from, BOARD_SIZE, whitePawn);
 			board = placePiece(board, to, BOARD_SIZE, blackPawn);
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 
 			const nextGame = updateGame(game, { from, to });
 
@@ -259,7 +312,7 @@ describe('createInitialGame', () => {
 				const to = { row: color === 'white' ? 7 : 0, col: 3 };
 				const pawn = { color, type: 'pawn' as const };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, pawn);
-				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 				const move = { from, to, promotion };
 
 				const nextGame = updateGame(game, move);
@@ -281,7 +334,7 @@ describe('createInitialGame', () => {
 			board = placePiece(board, to, BOARD_SIZE, {
 				color: color === 'white' ? 'black' : 'white', type: 'rook',
 			});
-			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 
 			const nextGame = updateGame(game, { from, to, promotion: 'knight' });
 
@@ -294,7 +347,7 @@ describe('createInitialGame', () => {
 			const from = { row: color === 'white' ? 6 : 1, col: 3 };
 			const to = { row: color === 'white' ? 7 : 0, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 
 			expect(() => updateGame(game, { from, to })).toThrow('Promotion piece must be specified');
 			expect(getPieceAt(game.board, from, BOARD_SIZE)).toEqual({ color, type: 'pawn' });
@@ -309,7 +362,7 @@ describe('createInitialGame', () => {
 				const from = { row: fromRow, col: 3 };
 				const to = { row: toRow, col: 3 };
 				const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color, type: 'pawn' });
-				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+				const game = { activeColor: color, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 
 				expect(() => updateGame(game, { from, to, promotion: 'queen' }))
 					.toThrow('Promotion can only occur on the last rank for the pawn color');
@@ -319,7 +372,7 @@ describe('createInitialGame', () => {
 		it('rejects a promotion choice for a non-pawn', () => {
 			const from = { row: 3, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'rook' });
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 
 			expect(() => updateGame(game, { from, to: { row: 3, col: 4 }, promotion: 'queen' }))
 				.toThrow('Only pawns can be promoted');
@@ -342,7 +395,7 @@ describe('createInitialGame', () => {
 				blackKingSide: true,
 				blackQueenSide: true,
 			};
-			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 			const move = { from: kingFrom, to: kingTo, castle };
 
 			const nextGame = updateGame(game, move);
@@ -373,6 +426,7 @@ describe('createInitialGame', () => {
 				enPassantTarget: null,
 				positionHistory: [],
 				halfmoveClock: 0,
+				fullmoveNumber: 1,
 			};
 
 			const nextGame = updateGame(game, { from, to: { row: 1, col: 4 } });
@@ -398,7 +452,7 @@ describe('createInitialGame', () => {
 				blackKingSide: true,
 				blackQueenSide: true,
 			};
-			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: color, board, history: [], castlingRights: rights, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 
 			const nextGame = updateGame(game, { from, to: { row: row === 0 ? 1 : 6, col } });
 
@@ -422,6 +476,7 @@ describe('createInitialGame', () => {
 				enPassantTarget: null,
 				positionHistory: [],
 				halfmoveClock: 0,
+				fullmoveNumber: 1,
 			};
 
 			const nextGame = updateGame(game, { from, to });
@@ -434,7 +489,7 @@ describe('createInitialGame', () => {
 		it('rejects an invalid promotion choice at runtime', () => {
 			const from = { row: 6, col: 3 };
 			const board = placePiece(createEmptyBoard(), from, BOARD_SIZE, { color: 'white', type: 'pawn' });
-			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0 };
+			const game = { activeColor: 'white' as const, board, history: [], castlingRights: NO_CASTLING_RIGHTS, enPassantTarget: null, positionHistory: [], halfmoveClock: 0, fullmoveNumber: 1 };
 			const move = { from, to: { row: 7, col: 3 }, promotion: 'king' as const };
 
 			// @ts-expect-error Invalid runtime input must still be rejected.
