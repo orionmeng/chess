@@ -50,3 +50,21 @@ records each previous position and updates the clock. Custom game states must su
 their own clock and previous positions, or initialize them to `0` and `[]` for a new
 history. Intended moves must be legal and include any required promotion or castling
 metadata; an invalid intended move throws.
+
+## History and notation
+
+- `updateGame` records moves and prior positions; `undoMove` restores the previous
+  position, counters, and repetition history. It throws if no recorded move is available.
+- `parseFen` and `formatFen` import and export all six FEN fields. FEN import starts a
+  new history because a FEN position does not encode the moves that led to it. Parsing
+  validates FEN structure, but does not prove that the position is reachable in a game.
+- `parsePgn` returns `{ game, tags }`; `formatPgn(game, tags)` exports the recorded
+  mainline with SAN moves and a result. PGN supports setup/FEN tags, comments, NAGs,
+  nested variations, and escape lines on import, but discards annotations and variations.
+  Export adds the standard seven tags with placeholders where needed and defaults the
+  result to `*`; callers provide the result rather than the engine inferring it.
+  A known result that contradicts checkmate or an implemented automatic draw is rejected;
+  invalid notation throws.
+
+Custom game states must also initialize `fullmoveNumber` to 1 (or the correct FEN move
+number); prior-position entries retain both counters so undo can restore them.
